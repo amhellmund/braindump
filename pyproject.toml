@@ -14,7 +14,7 @@ path = "tools/hatch_build.py"
 
 [project]
 name = "braindump-ai"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local-first, AI-powered knowledge management app"
 readme = "README.md"
 requires-python = ">=3.13"

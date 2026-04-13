@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Install
-pip install braindump
+pip install braindump-ai
 
 # 2. Initialize a workspace (creates spikes/, wiki/, and llm.json)
 braindump init ~/my-knowledge-base
