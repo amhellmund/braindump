@@ -1,0 +1,312 @@
+/* ── Wrapper ── */
+.query-bar {
+  height: var(--bottom-bar-height);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Chat overlay — floats above the graph ── */
+.query-chat {
+  position: absolute;
+  bottom: 53px;
+  left: 20px;
+  right: 20px;
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+  padding: 16px 18px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* ── User message ── */
+.chat-user-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.chat-user-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.chat-user-text {
+  max-width: 80%;
+  padding: 9px 13px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Assistant message ── */
+.chat-assistant-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.chat-assistant-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+/* ── Thinking indicator ── */
+.chat-thinking {
+  display: flex;
+  gap: 5px;
+  padding: 10px 4px;
+}
+
+.chat-thinking span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: thinking 1.2s ease-in-out infinite;
+}
+
+.chat-thinking span:nth-child(2) { animation-delay: 0.2s; }
+.chat-thinking span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes thinking {
+  0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
+  30%           { opacity: 1;   transform: translateY(-4px); }
+}
+
+/* ── Answer blocks ── */
+.query-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.query-text-block {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.query-inline-code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #1e2535;
+  color: #93c5fd;
+}
+
+.query-citation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--tag-bg);
+  color: var(--accent);
+  vertical-align: super;
+  cursor: default;
+  line-height: 1;
+  margin-left: 1px;
+}
+
+.query-code-block {
+  position: relative;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.query-code-block code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c9d1d9;
+  white-space: pre;
+}
+
+.query-code-lang {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--text-muted);
+}
+
+/* ── Sources ── */
+.query-sources-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.query-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.query-source-card {
+  padding: 7px 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.query-source-card:hover {
+  border-color: var(--accent);
+  background: var(--surface-active);
+}
+
+.source-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.source-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--tag-bg);
+  color: var(--accent);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.source-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.source-section {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.source-snippet {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Input row ── */
+.query-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  padding: 0 12px;
+}
+
+.query-icon-btn {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.query-icon-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.query-icon-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.query-input {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.query-input:focus {
+  border-color: var(--accent);
+}
+
+.query-submit {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.query-submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.query-submit:not(:disabled):hover {
+  background: var(--accent-hover);
+}

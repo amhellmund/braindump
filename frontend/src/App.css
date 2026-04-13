@@ -1,0 +1,263 @@
+/* ── Design tokens ── */
+:root {
+  --toolbar-height:  44px;
+  --bottom-bar-height: 50px;
+  --bg:              #0f1117;
+  --surface:         #161b27;
+  --surface-graph:   #0d1117;
+  --surface-hover:   #1e2535;
+  --surface-active:  #1a2440;
+  --surface-input:   #1e2535;
+  --border:          #2a3347;
+  --border-subtle:   #1e2535;
+  --text-primary:    #f1f5f9;
+  --text-secondary:  #b4c2d0;
+  --text-muted:      #6b7e96;
+  --accent:          #3b82f6;
+  --accent-hover:    #2563eb;
+  --tag-bg:          #1e2d4a;
+  --tag-text:        #60a5fa;
+  --highlight-bg:    #1e2d4a;
+}
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root { height: 100vh; }
+
+/* ── Layout ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-panels {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 260px;
+  min-width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+.right-panel {
+  width: 20vw;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-panel.expanded {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 60vw;
+  z-index: 50;
+  border-left: 1px solid var(--border);
+}
+
+/* ── Sidebar header ── */
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: var(--toolbar-height);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.logo {
+  height: 24px;
+  width: auto;
+  display: block;
+}
+
+
+/* ── Sidebar add-spike action ── */
+.sidebar-actions {
+  padding: 10px 12px 2px;
+  flex-shrink: 0;
+}
+
+.btn-add-spike {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.25);
+}
+
+.btn-add-spike:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+.btn-add-spike-icon {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+/* ── Shared zoom/toggle button (used in GraphView and HierarchyView) ── */
+.zoom-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.zoom-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.zoom-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Main area tab bar (Graph / Browse toggle) ── */
+.main-tab-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  height: var(--toolbar-height);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.main-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.main-tab {
+  font-size: 12px;
+  padding: 4px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.main-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.main-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Main view slot — wraps GraphView or HierarchyView ── */
+.main-view-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.main-view-slot.hidden {
+  display: none;
+}
+
+/* ── Shared button styles (used across components) ── */
+.btn-expand {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 1;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+
+.btn-expand:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+
+.btn-toggle {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.btn-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+.btn-close:hover {
+  color: var(--text-primary);
+}

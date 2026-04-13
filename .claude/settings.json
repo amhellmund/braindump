@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run ruff:*)",
+      "Bash(uv run ty:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run bandit:*)",
+      "Bash(uv run tools/check.py:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run build:*)"
+    ]
+  }
+}
