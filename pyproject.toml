@@ -13,7 +13,7 @@ packages = ["src/braindump"]
 path = "tools/hatch_build.py"
 
 [project]
-name = "braindump"
+name = "braindump-ai"
 version = "0.1.0"
 description = "Local-first, AI-powered knowledge management app"
 readme = "README.md"
