@@ -39,9 +39,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi import (
-    Path as PathParam,
-)
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -380,7 +378,7 @@ async def ws_sync_status(ws: WebSocket) -> None:
         while True:
             try:
                 await asyncio.wait_for(ws.receive_text(), timeout=_WS_PING_INTERVAL)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await ws.send_json({"type": "ping"})
     except (WebSocketDisconnect, Exception):
         _ws_manager.disconnect(ws)
