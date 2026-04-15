@@ -369,12 +369,23 @@ def _count_images(nodes: list[dict]) -> int:
 def _inline_to_text(children: list[dict]) -> str:
     parts: list[str] = []
     for node in children:
-        if node["type"] in ("text", "codespan"):
+        t = node["type"]
+        if t == "text":
             parts.append(node.get("raw", ""))
-        elif node["type"] == "image":
+        elif t == "codespan":
+            parts.append(f"`{node.get('raw', '')}`")
+        elif t == "strong":
+            parts.append(f"**{_inline_to_text(node.get('children', []))}**")
+        elif t == "emphasis":
+            parts.append(f"*{_inline_to_text(node.get('children', []))}*")
+        elif t == "image":
             alt = _inline_to_text(node.get("children", []))
             url = node.get("attrs", {}).get("url", "")
             parts.append(f"![{alt}]({url})")
+        elif t == "link":
+            label = _inline_to_text(node.get("children", []))
+            url = node.get("attrs", {}).get("url", "")
+            parts.append(f"[{label}]({url})")
         elif "children" in node:
             parts.append(_inline_to_text(node["children"]))
     return "".join(parts)
@@ -392,6 +403,16 @@ def _tokens_to_text(tokens: list[dict]) -> str:
         elif t == "heading":
             level = token["attrs"]["level"]
             parts.append("#" * level + " " + _inline_to_text(token.get("children", [])))
+        elif t == "list":
+            ordered = token.get("attrs", {}).get("ordered", False)
+            lines: list[str] = []
+            for idx, item in enumerate(token.get("children", [])):
+                item_text = _inline_to_text(
+                    [child for node in item.get("children", []) for child in node.get("children", [])]
+                )
+                prefix = f"{idx + 1}." if ordered else "-"
+                lines.append(f"{prefix} {item_text}")
+            parts.append("\n".join(lines))
     return "\n\n".join(p for p in parts if p)
 
 

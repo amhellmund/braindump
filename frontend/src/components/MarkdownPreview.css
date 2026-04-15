@@ -39,6 +39,36 @@
   text-transform: lowercase;
 }
 
+.md-list {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+  color: var(--text-secondary);
+}
+
+.md-list li {
+  margin-bottom: 3px;
+  line-height: 1.6;
+}
+
+.md-inline-code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #c9d1d9;
+}
+
+.md-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.md-link:hover {
+  text-decoration: underline;
+}
+
 .md-image {
   display: block;
   max-width: 100%;
