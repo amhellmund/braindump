@@ -35,7 +35,7 @@ export default function SpikeDetail({ spike, highlightSection, expanded, onEdit,
           >
             <FontAwesomeIcon icon={expanded ? faCompress : faExpand} />
           </button>
-          <span className="detail-title">{spike.title}</span>
+          <span className="detail-title">Spike Viewer</span>
         </div>
         <div className="detail-actions">
           <button className="btn-toggle" onClick={onEdit}>Edit</button>
