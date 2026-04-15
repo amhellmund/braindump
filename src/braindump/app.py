@@ -39,9 +39,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi import (
-    Path as PathParam,
-)
+from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -369,14 +367,20 @@ async def get_log(request: Request, lines: int = Query(50, ge=1, le=1000)) -> JS
 # ---------------------------------------------------------------------------
 
 
+_WS_PING_INTERVAL = 25.0  # seconds; keeps proxies and browsers from dropping idle connections
+
+
 @api.websocket("/ws")
 async def ws_sync_status(ws: WebSocket) -> None:
     """Push sync-status events to connected clients."""
     await _ws_manager.connect(ws)
     try:
         while True:
-            await ws.receive_text()  # keep-alive; client messages are ignored
-    except WebSocketDisconnect:
+            try:
+                await asyncio.wait_for(ws.receive_text(), timeout=_WS_PING_INTERVAL)
+            except TimeoutError:
+                await ws.send_json({"type": "ping"})
+    except (WebSocketDisconnect, Exception):
         _ws_manager.disconnect(ws)
 
 

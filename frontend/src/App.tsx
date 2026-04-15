@@ -81,45 +81,80 @@ function AppInner() {
   useEffect(() => { hierarchyDataRef.current = hierarchyData }, [hierarchyData])
 
   useEffect(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws`)
-    ws.onmessage = (event: MessageEvent) => {
-      try {
-        const msg = JSON.parse(event.data as string) as {
-          type: string
-          spike_id?: string | null
-          syncing?: boolean
-          health_check?: boolean
-          total_cost_usd?: number
-          total_tokens?: number
-          error?: string
-        }
-        if (msg.type === 'sync_start') {
-          setIsSyncing(true)
-          if (msg.health_check) setIsHealthCheck(true)
-        } else if (msg.type === 'sync_error') {
-          pushError('Wiki sync failed', msg.error ?? 'Unknown error')
-        } else if (msg.type === 'sync_done') {
-          const stillSyncing = msg.syncing ?? false
-          setIsSyncing(stillSyncing)
-          if (!stillSyncing) setIsHealthCheck(false)
-          if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
-          if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
-          loadGraphRef.current()
-          // Silently refresh hierarchy community data if it has been loaded.
-          if (hierarchyDataRef.current !== null) {
-            fetchGraph(1).then(setHierarchyData).catch(() => {})
+    let destroyed = false
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let backoffMs = 1000
+
+    const connect = () => {
+      if (destroyed) return
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws`)
+
+      ws.onopen = () => {
+        backoffMs = 1000  // reset backoff after a successful connection
+      }
+
+      ws.onmessage = (event: MessageEvent) => {
+        try {
+          const msg = JSON.parse(event.data as string) as {
+            type: string
+            spike_id?: string | null
+            syncing?: boolean
+            health_check?: boolean
+            total_cost_usd?: number
+            total_tokens?: number
+            error?: string
           }
-        } else if (msg.type === 'usage_update') {
-          if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
-          if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
+          if (msg.type === 'ping') {
+            // server keepalive — no action needed
+          } else if (msg.type === 'sync_start') {
+            setIsSyncing(true)
+            if (msg.health_check) setIsHealthCheck(true)
+          } else if (msg.type === 'sync_error') {
+            pushError('Wiki sync failed', msg.error ?? 'Unknown error')
+          } else if (msg.type === 'sync_done') {
+            const stillSyncing = msg.syncing ?? false
+            setIsSyncing(stillSyncing)
+            if (!stillSyncing) setIsHealthCheck(false)
+            if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
+            if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
+            loadGraphRef.current()
+            // Silently refresh hierarchy community data if it has been loaded.
+            if (hierarchyDataRef.current !== null) {
+              fetchGraph(1).then(setHierarchyData).catch(() => {})
+            }
+          } else if (msg.type === 'usage_update') {
+            if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
+            if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
+          }
+        } catch {
+          // ignore malformed messages
         }
-      } catch {
-        // ignore malformed messages
+      }
+
+      ws.onerror = () => {
+        // onclose fires immediately after onerror, reconnect logic lives there
+        ws?.close()
+      }
+
+      ws.onclose = () => {
+        if (destroyed) return
+        reconnectTimer = setTimeout(() => {
+          backoffMs = Math.min(backoffMs * 2, 30_000)
+          connect()
+        }, backoffMs)
       }
     }
-    return () => ws.close()
-  }, [])
+
+    connect()
+
+    return () => {
+      destroyed = true
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer)
+      ws?.close()
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- refs are stable; setters are stable
 
   const handleSwitchToHierarchy = useCallback(() => {
     setMainView('hierarchy')
