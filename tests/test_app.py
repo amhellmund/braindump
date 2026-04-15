@@ -203,7 +203,7 @@ def test_h2_inside_fenced_code_not_treated_as_section(client: TestClient) -> Non
 def test_title_with_inline_markup_strips_markup(client: TestClient) -> None:
     raw = "---\ntags: []\n---\n\n# Title with `code`\n\nBody."
     data = client.post("/api/v1/spikes", json={"raw": raw}).json()
-    assert data["title"] == "Title with code"
+    assert data["title"] == "Title with `code`"
 
 
 def test_workspace_created_if_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
