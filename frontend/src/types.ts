@@ -1,5 +1,5 @@
 export interface Section {
-  heading: string
+  heading: string | null
   content: string
 }
 

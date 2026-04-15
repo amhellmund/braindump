@@ -97,6 +97,15 @@
   padding: 16px;
 }
 
+.detail-body-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 16px;
+  padding: 0 12px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
 .section-block {
   margin-bottom: 20px;
   padding: 10px 12px;

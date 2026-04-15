@@ -58,7 +58,7 @@ class SpikeMetaEntry(SpikeMeta):
 class Section(BaseModel):
     """A single ## section within a spike."""
 
-    heading: str
+    heading: str | None
     content: str
 
 

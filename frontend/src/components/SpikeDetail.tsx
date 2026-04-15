@@ -61,11 +61,12 @@ export default function SpikeDetail({ spike, highlightSection, expanded, onEdit,
       </div>
 
       <div className="detail-body">
-        {spike.sections.map(section => (
+        <h1 className="detail-body-title">{spike.title}</h1>
+        {spike.sections.map((section, idx) => (
           <SectionBlock
-            key={section.heading}
+            key={section.heading ?? `intro-${idx}`}
             section={section}
-            highlighted={section.heading === highlightSection}
+            highlighted={section.heading !== null && section.heading === highlightSection}
           />
         ))}
       </div>
@@ -84,7 +85,7 @@ function SectionBlock({ section, highlighted }: { section: Section; highlighted:
 
   return (
     <div ref={ref} className={`section-block ${highlighted ? 'highlighted' : ''}`}>
-      <h2 className="section-heading">{section.heading}</h2>
+      {section.heading !== null && <h2 className="section-heading">{section.heading}</h2>}
       <MarkdownPreview raw={section.content} stripFrontmatter={false} />
     </div>
   )

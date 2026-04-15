@@ -420,17 +420,22 @@ def _parse_sections(tokens: list[dict]) -> list[Section]:
     sections: list[Section] = []
     current_heading: str | None = None
     current_body: list[dict] = []
+    intro_started = False
 
     for token in tokens:
-        if token["type"] == "heading" and token["attrs"]["level"] == 2:
-            if current_heading is not None:
+        if token["type"] == "heading" and token["attrs"]["level"] == 1:
+            # Skip the spike title heading; anything after it is intro content.
+            intro_started = True
+        elif token["type"] == "heading" and token["attrs"]["level"] == 2:
+            if current_heading is not None or (intro_started and current_body):
                 sections.append(Section(heading=current_heading, content=_tokens_to_text(current_body)))
             current_heading = _inline_to_text(token.get("children", []))
             current_body = []
-        elif current_heading is not None:
+            intro_started = False
+        elif intro_started or current_heading is not None:
             current_body.append(token)
 
-    if current_heading is not None:
+    if current_heading is not None or (intro_started and current_body):
         sections.append(Section(heading=current_heading, content=_tokens_to_text(current_body)))
 
     return sections
