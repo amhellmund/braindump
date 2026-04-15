@@ -43,9 +43,11 @@ from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from braindump import dirs, health, query, storage, txlog, wiki
+from braindump import chats, dirs, health, query, storage, txlog, wiki
 from braindump.llm import load_backend
 from braindump.types import (
+    ChatSessionResponse,
+    ChatSessionSummary,
     HealthReport,
     ImageUploadResponse,
     LLMConfig,
@@ -294,6 +296,10 @@ async def ask(request: Request, body: QueryRequest) -> QueryResponse:
     """Answer a question using the compiled wiki index."""
     workspace: Path = request.app.state.workspace
     braindump_data_dir: Path = request.app.state.braindump_data_dir
+
+    if body.session_id is not None and not chats.session_exists(workspace, body.session_id):
+        raise HTTPException(status_code=404, detail="Chat session not found")
+
     try:
         if request.app.state.llm_backend is None:
             request.app.state.llm_backend = load_backend(braindump_data_dir)
@@ -310,7 +316,41 @@ async def ask(request: Request, body: QueryRequest) -> QueryResponse:
             "total_tokens": _state.total_tokens,
         }
     )
-    return result.response
+
+    if body.session_id is None:
+        session = chats.create_session(workspace, body.query)
+        effective_session_id = session.id
+    else:
+        effective_session_id = body.session_id
+
+    chats.append_turn(
+        workspace,
+        effective_session_id,
+        body.query,
+        result.response.answer,
+        result.response.citations,
+    )
+
+    return QueryResponse(
+        answer=result.response.answer,
+        citations=result.response.citations,
+        sessionId=effective_session_id,
+    )
+
+
+@api.get("/chats", summary="List recent chat sessions")
+async def list_chats(request: Request) -> list[ChatSessionSummary]:
+    """Return up to 20 recent chat sessions sorted by last-updated descending."""
+    return chats.list_sessions(request.app.state.workspace)
+
+
+@api.get("/chats/{session_id}", summary="Get a chat session")
+async def get_chat(request: Request, session_id: SpikeId) -> ChatSessionResponse:
+    """Return the full chat session with all stored turns."""
+    try:
+        return chats.get_session(request.app.state.workspace, session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Chat session not found") from exc
 
 
 # ---------------------------------------------------------------------------

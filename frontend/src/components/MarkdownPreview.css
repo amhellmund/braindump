@@ -60,6 +60,13 @@
   color: #c9d1d9;
 }
 
+.md-footnote-ref {
+  font-size: 9px;
+  font-weight: 600;
+  vertical-align: super;
+  line-height: 1;
+}
+
 .md-link {
   color: var(--accent);
   text-decoration: none;

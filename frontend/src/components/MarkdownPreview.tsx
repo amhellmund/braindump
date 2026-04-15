@@ -8,8 +8,8 @@ interface Props {
 
 // Renders inline markdown: `code`, **bold**, *italic*, [link](url)
 function renderInline(text: string): React.ReactNode {
-  // Pattern: inline code, bold, italic, links — in priority order
-  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g
+  // Pattern: inline code, bold, italic, links, footnote refs — in priority order
+  const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|\[\d+\])/g
   const parts: React.ReactNode[] = []
   let last = 0
   let match: RegExpExecArray | null
@@ -25,6 +25,8 @@ function renderInline(text: string): React.ReactNode {
       parts.push(<strong key={match.index}>{token.slice(2, -2)}</strong>)
     } else if (token.startsWith('*')) {
       parts.push(<em key={match.index}>{token.slice(1, -1)}</em>)
+    } else if (/^\[\d+\]$/.test(token)) {
+      parts.push(<sup key={match.index} className="md-footnote-ref">{token}</sup>)
     } else {
       // link: [label](url)
       const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/)

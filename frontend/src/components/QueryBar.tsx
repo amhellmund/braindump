@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faChevronDown, faChevronUp, faPlus } from '@fortawesome/free-solid-svg-icons'
-import { ChatTurn, QuerySource, sendQuery } from '../api'
+import { faChevronDown, faChevronUp, faPlus, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
+import {
+  ChatTurn,
+  QuerySource,
+  ChatSessionSummary,
+  sendQuery,
+  fetchChatSessions,
+  fetchChatSession,
+} from '../api'
 import { useErrorToast } from './ErrorToast'
+import MarkdownPreview from './MarkdownPreview'
 import './QueryBar.css'
 
 interface UserMessage {
@@ -28,6 +36,10 @@ export default function QueryBar({ onSourceClick }: Props) {
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [expanded, setExpanded] = useState(true)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historySessions, setHistorySessions] = useState<ChatSessionSummary[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -36,16 +48,23 @@ export default function QueryBar({ onSourceClick }: Props) {
     }
   }, [messages, expanded])
 
+  useEffect(() => {
+    if (!historyOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHistoryOpen(false)
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [historyOpen])
+
   const submit = async () => {
     if (!query.trim() || loading) return
     const text = query.trim()
     setQuery('')
     setExpanded(true)
+    setHistoryOpen(false)
 
-    setMessages(prev => {
-      const next = [...prev, { role: 'user' as const, text }]
-      return next
-    })
+    setMessages(prev => [...prev, { role: 'user' as const, text }])
     setLoading(true)
 
     try {
@@ -54,7 +73,8 @@ export default function QueryBar({ onSourceClick }: Props) {
           ? { role: 'user' as const, text: m.text }
           : { role: 'assistant' as const, text: m.answer }
       )
-      const result = await sendQuery(text, history)
+      const result = await sendQuery(text, history, sessionId ?? undefined)
+      setSessionId(result.sessionId)
       setMessages(prev => [...prev, { role: 'assistant', answer: result.answer, sources: result.citations }])
     } catch (err: unknown) {
       pushError('Query failed', String(err))
@@ -68,6 +88,41 @@ export default function QueryBar({ onSourceClick }: Props) {
     setMessages([])
     setQuery('')
     setExpanded(true)
+    setSessionId(null)
+    setHistoryOpen(false)
+  }
+
+  const openHistory = async () => {
+    if (historyOpen) {
+      setHistoryOpen(false)
+      return
+    }
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    try {
+      const sessions = await fetchChatSessions()
+      setHistorySessions(sessions)
+    } catch (err: unknown) {
+      pushError('Failed to load chat history', String(err))
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const loadSession = async (id: string) => {
+    try {
+      const detail = await fetchChatSession(id)
+      const restored: Message[] = detail.turns.flatMap(t => [
+        { role: 'user' as const, text: t.query },
+        { role: 'assistant' as const, answer: t.answer, sources: t.citations },
+      ])
+      setMessages(restored)
+      setSessionId(id)
+      setExpanded(true)
+      setHistoryOpen(false)
+    } catch (err: unknown) {
+      pushError('Failed to load session', String(err))
+    }
   }
 
   const hasMessages = messages.length > 0
@@ -87,9 +142,7 @@ export default function QueryBar({ onSourceClick }: Props) {
               <div key={i} className="chat-assistant-message">
                 <span className="chat-assistant-label">braindump</span>
                 <div className="query-answer">
-                  <p className="query-text-block">
-                    <InlineText text={msg.answer} />
-                  </p>
+                  <MarkdownPreview raw={msg.answer} stripFrontmatter={false} />
                 </div>
                 {msg.sources.length > 0 && (
                   <>
@@ -127,6 +180,31 @@ export default function QueryBar({ onSourceClick }: Props) {
         </div>
       )}
 
+      {/* History panel */}
+      {historyOpen && (
+        <div className="query-history-panel">
+          <div className="query-history-header">Recent chats</div>
+          {historyLoading ? (
+            <div className="query-history-empty">Loading…</div>
+          ) : historySessions.length === 0 ? (
+            <div className="query-history-empty">No chat history yet.</div>
+          ) : (
+            <ul className="query-history-list">
+              {historySessions.map(s => (
+                <li
+                  key={s.id}
+                  className={`query-history-item${s.id === sessionId ? ' active' : ''}`}
+                  onClick={() => loadSession(s.id)}
+                >
+                  <span className="history-item-title">{s.title}</span>
+                  <span className="history-item-meta">{s.turnCount} turn{s.turnCount !== 1 ? 's' : ''}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Input row */}
       <div className="query-input-row">
         <button
@@ -144,6 +222,13 @@ export default function QueryBar({ onSourceClick }: Props) {
         >
           <FontAwesomeIcon icon={faPlus} />
         </button>
+        <button
+          className={`query-icon-btn${historyOpen ? ' active' : ''}`}
+          onClick={openHistory}
+          title="Chat history"
+        >
+          <FontAwesomeIcon icon={faClockRotateLeft} />
+        </button>
         <input
           type="text"
           className="query-input"
@@ -157,24 +242,5 @@ export default function QueryBar({ onSourceClick }: Props) {
         </button>
       </div>
     </div>
-  )
-}
-
-// ── Inline text renderer ─────────────────────────────────────────────────────
-
-function InlineText({ text }: { text: string }) {
-  const parts = text.split(/(`[^`]+`|\[\d+\])/)
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('`') && part.endsWith('`')) {
-          return <code key={i} className="query-inline-code">{part.slice(1, -1)}</code>
-        }
-        if (/^\[\d+\]$/.test(part)) {
-          return <sup key={i} className="query-citation">{part}</sup>
-        }
-        return <span key={i}>{part}</span>
-      })}
-    </>
   )
 }

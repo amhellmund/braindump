@@ -27,6 +27,7 @@ from pathlib import Path
 _CONFIG_DIR = ".config"
 _SPIKES_DIR = "spikes"
 _WIKI_DIR = "wiki"
+_CHATS_DIR = "chats"
 _TXLOG_FILE = "txlog.jsonl"
 
 
@@ -113,3 +114,15 @@ def usage_path(workspace: Path) -> Path:
 def versions_path(workspace: Path) -> Path:
     """Return the path to ``<workspace>/versions.json``."""
     return workspace / "versions.json"
+
+
+def chats_dir(workspace: Path) -> Path:
+    """Return the chats directory (``<workspace>/chats/``), creating it if needed."""
+    path = workspace / _CHATS_DIR
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def chat_session_path(workspace: Path, session_id: str) -> Path:
+    """Return the path to ``<workspace>/chats/{session_id}.json``."""
+    return chats_dir(workspace) / f"{session_id}.json"

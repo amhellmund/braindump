@@ -63,6 +63,7 @@ export interface QuerySource {
 export interface QueryResponse {
   answer: string
   citations: QuerySource[]
+  sessionId: string
 }
 
 export interface ChatTurn {
@@ -70,11 +71,50 @@ export interface ChatTurn {
   text: string
 }
 
-export async function sendQuery(query: string, history: ChatTurn[] = []): Promise<QueryResponse> {
+export async function sendQuery(
+  query: string,
+  history: ChatTurn[] = [],
+  sessionId?: string,
+): Promise<QueryResponse> {
   return request<QueryResponse>('/query', {
     method: 'POST',
-    body: JSON.stringify({ query, history }),
+    body: JSON.stringify({
+      query,
+      history,
+      ...(sessionId !== undefined ? { session_id: sessionId } : {}),
+    }),
   })
+}
+
+export interface ChatSessionSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  turnCount: number
+}
+
+export interface StoredChatTurn {
+  query: string
+  answer: string
+  citations: QuerySource[]
+  timestamp: string
+}
+
+export interface ChatSessionDetail {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  turns: StoredChatTurn[]
+}
+
+export async function fetchChatSessions(): Promise<ChatSessionSummary[]> {
+  return request<ChatSessionSummary[]>('/chats')
+}
+
+export async function fetchChatSession(sessionId: string): Promise<ChatSessionDetail> {
+  return request<ChatSessionDetail>(`/chats/${sessionId}`)
 }
 
 export interface ImageUploadResponse {

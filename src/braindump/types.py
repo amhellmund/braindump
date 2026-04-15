@@ -94,6 +94,7 @@ class QueryRequest(BaseModel):
 
     query: str = Field(max_length=10_000)
     history: list[ChatTurn] = []
+    session_id: str | None = None
 
 
 class QuerySource(BaseModel):
@@ -111,6 +112,46 @@ class QueryResponse(BaseModel):
 
     answer: str
     citations: list[QuerySource]
+    sessionId: str = ""
+
+
+class StoredChatTurn(BaseModel):
+    """A single query-answer pair stored as part of a persisted chat session."""
+
+    query: str
+    answer: str
+    citations: list[QuerySource]
+    timestamp: str
+
+
+class ChatSession(BaseModel):
+    """Full chat session as stored on disk in ``workspace/chats/{id}.json``."""
+
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    turns: list[StoredChatTurn]
+
+
+class ChatSessionSummary(BaseModel):
+    """Lightweight session summary returned by ``GET /chats``."""
+
+    id: str
+    title: str
+    createdAt: str
+    updatedAt: str
+    turnCount: int
+
+
+class ChatSessionResponse(BaseModel):
+    """Full session returned by ``GET /chats/{session_id}``."""
+
+    id: str
+    title: str
+    createdAt: str
+    updatedAt: str
+    turns: list[StoredChatTurn]
 
 
 class ImageUploadResponse(BaseModel):
