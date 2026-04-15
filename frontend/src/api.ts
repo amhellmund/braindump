@@ -101,6 +101,8 @@ export interface WikiUpdateLogDetail {
   hierarchy_section: string
   cost_usd: number
   total_tokens: number
+  system_prompt_chars?: number
+  prompt_chars?: number
 }
 
 export interface WikiRemoveLogDetail {
@@ -108,6 +110,8 @@ export interface WikiRemoveLogDetail {
   spike_id: string
   cost_usd: number
   total_tokens: number
+  system_prompt_chars?: number
+  prompt_chars?: number
 }
 
 export interface HealthCheckLogDetail {

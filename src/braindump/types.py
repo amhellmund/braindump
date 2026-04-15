@@ -143,6 +143,8 @@ class WikiUpdateLogDetail(BaseModel):
     hierarchy_section: str
     cost_usd: float
     total_tokens: int
+    system_prompt_chars: int | None = None
+    prompt_chars: int | None = None
 
 
 class WikiRemoveLogDetail(BaseModel):
@@ -152,6 +154,8 @@ class WikiRemoveLogDetail(BaseModel):
     spike_id: str
     cost_usd: float
     total_tokens: int
+    system_prompt_chars: int | None = None
+    prompt_chars: int | None = None
 
 
 class HealthCheckLogDetail(BaseModel):

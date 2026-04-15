@@ -31,6 +31,12 @@ function formatCost(usd: number): string {
   return '$' + usd.toFixed(3)
 }
 
+function formatChars(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
 function formatTs(ts: string): string {
   try {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -63,6 +69,8 @@ function WikiUpdateDetail({ d }: { d: WikiUpdateLogDetail }) {
       )}
       <div className="status-log-detail-meta">
         {formatTokens(d.total_tokens)} tokens · {formatCost(d.cost_usd)}
+        {' · '}system: {d.system_prompt_chars != null ? formatChars(d.system_prompt_chars) + ' chars' : 'n/a'}
+        {' · '}prompt: {d.prompt_chars != null ? formatChars(d.prompt_chars) + ' chars' : 'n/a'}
       </div>
     </>
   )
@@ -77,6 +85,8 @@ function WikiRemoveDetail({ d }: { d: WikiRemoveLogDetail }) {
       </div>
       <div className="status-log-detail-meta">
         {formatTokens(d.total_tokens)} tokens · {formatCost(d.cost_usd)}
+        {' · '}system: {d.system_prompt_chars != null ? formatChars(d.system_prompt_chars) + ' chars' : 'n/a'}
+        {' · '}prompt: {d.prompt_chars != null ? formatChars(d.prompt_chars) + ' chars' : 'n/a'}
       </div>
     </>
   )

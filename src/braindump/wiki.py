@@ -299,16 +299,19 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
     schema = schema_path(workspace).read_text(encoding="utf-8")
     total_cost = 0.0
     total_tokens = 0
+    total_prompt_chars = 0
 
     txid = txlog.begin_transaction(workspace, txlog.TxOp.UPDATE_SPIKE, spike.id)
 
     # 1. Update index.md
     current_index = index_path(workspace).read_text(encoding="utf-8")
+    index_prompt = _index_update_prompt(current_index, spike)
+    total_prompt_chars += len(index_prompt)
     result = await asyncio.to_thread(
         backend.complete_with_usage,
         schema,
         [],
-        _index_update_prompt(current_index, spike),
+        index_prompt,
     )
     new_index_text = result.text.strip() + "\n"
     index_path(workspace).write_text(new_index_text, encoding="utf-8")
@@ -319,11 +322,13 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
     # 2. Update connections.md (gets index.md as context about other spikes)
     updated_index = index_path(workspace).read_text(encoding="utf-8")
     current_connections = connections_path(workspace).read_text(encoding="utf-8")
+    connections_prompt = _connections_update_prompt(current_connections, updated_index, spike)
+    total_prompt_chars += len(connections_prompt)
     result = await asyncio.to_thread(
         backend.complete_with_usage,
         schema,
         [],
-        _connections_update_prompt(current_connections, updated_index, spike),
+        connections_prompt,
     )
     new_connections_text = result.text.strip() + "\n"
     connections_path(workspace).write_text(new_connections_text, encoding="utf-8")
@@ -333,11 +338,15 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
 
     # 3. Update hierarchy.md
     current_hierarchy = hierarchy_path(workspace).read_text(encoding="utf-8")
+    hierarchy_prompt = _hierarchy_update_prompt(
+        current_hierarchy, spike, _extract_index_section(new_index_text, spike.id)
+    )
+    total_prompt_chars += len(hierarchy_prompt)
     result = await asyncio.to_thread(
         backend.complete_with_usage,
         schema,
         [],
-        _hierarchy_update_prompt(current_hierarchy, spike, _extract_index_section(new_index_text, spike.id)),
+        hierarchy_prompt,
     )
     new_hierarchy_text = result.text.strip() + "\n"
     hierarchy_path(workspace).write_text(new_hierarchy_text, encoding="utf-8")
@@ -354,6 +363,8 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
         hierarchy_section=_extract_hierarchy_section(new_hierarchy_text, spike.id),
         cost_usd=total_cost,
         total_tokens=total_tokens,
+        system_prompt_chars=len(schema),
+        prompt_chars=total_prompt_chars,
     )
     append_log(workspace, f"Updated wiki for spike {spike.id} ({spike.title!r})", detail)
     return WikiUsage(cost_usd=total_cost, total_tokens=total_tokens)
@@ -382,6 +393,7 @@ async def remove_spike_from_wiki(workspace: Path, spike_id: str, backend: ChatBa
     )
     total_cost = 0.0
     total_tokens = 0
+    total_prompt_chars = 0
 
     txid = txlog.begin_transaction(workspace, txlog.TxOp.REMOVE_SPIKE, spike_id)
 
@@ -391,11 +403,13 @@ async def remove_spike_from_wiki(workspace: Path, spike_id: str, backend: ChatBa
         (hierarchy_path(workspace), txlog.TxEvent.STEP_HIERARCHY),
     ):
         current = wiki_file_path.read_text(encoding="utf-8")
+        prompt = removal_prompt + current
+        total_prompt_chars += len(prompt)
         result = await asyncio.to_thread(
             backend.complete_with_usage,
             schema,
             [],
-            removal_prompt + current,
+            prompt,
         )
         wiki_file_path.write_text(result.text.strip() + "\n", encoding="utf-8")
         total_cost += result.cost_usd
@@ -406,7 +420,13 @@ async def remove_spike_from_wiki(workspace: Path, spike_id: str, backend: ChatBa
     append_log(
         workspace,
         f"Removed spike {spike_id} from wiki",
-        WikiRemoveLogDetail(spike_id=spike_id, cost_usd=total_cost, total_tokens=total_tokens),
+        WikiRemoveLogDetail(
+            spike_id=spike_id,
+            cost_usd=total_cost,
+            total_tokens=total_tokens,
+            system_prompt_chars=len(schema),
+            prompt_chars=total_prompt_chars,
+        ),
     )
     return WikiUsage(cost_usd=total_cost, total_tokens=total_tokens)
 
