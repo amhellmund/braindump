@@ -43,6 +43,7 @@ function AppInner() {
   const [isHealthCheck, setIsHealthCheck] = useState(false)
   const [totalCostUsd, setTotalCostUsd] = useState(0)
   const [totalTokens, setTotalTokens] = useState(0)
+  const [syncCount, setSyncCount] = useState(0)
 
   useEffect(() => {
     fetchSpikes()
@@ -120,6 +121,8 @@ function AppInner() {
             if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
             if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
             loadGraphRef.current()
+            fetchSpikes().then(setSpikes).catch(() => {})
+            setSyncCount(c => c + 1)
             // Silently refresh hierarchy community data if it has been loaded.
             if (hierarchyDataRef.current !== null) {
               fetchGraph(1).then(setHierarchyData).catch(() => {})
@@ -257,7 +260,7 @@ function AppInner() {
           selectedId={selectedSpikeId}
           onSelect={handleSpikeSelect}
         />
-        <StatusBar syncing={isSyncing} healthCheck={isHealthCheck} totalCostUsd={totalCostUsd} totalTokens={totalTokens} />
+        <StatusBar syncing={isSyncing} healthCheck={isHealthCheck} totalCostUsd={totalCostUsd} totalTokens={totalTokens} syncCount={syncCount} />
       </aside>
 
       {/* Main area */}

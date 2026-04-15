@@ -49,9 +49,11 @@ def test_create_spike_returns_parsed_fields(client: TestClient) -> None:
     assert "id" in data
     assert "createdAt" in data
     assert "modifiedAt" in data
-    assert len(data["sections"]) == 1
-    assert data["sections"][0]["heading"] == "Details"
-    assert data["sections"][0]["content"] == "Some detail content."
+    assert len(data["sections"]) == 2
+    assert data["sections"][0]["heading"] is None
+    assert data["sections"][0]["content"] == "Intro paragraph."
+    assert data["sections"][1]["heading"] == "Details"
+    assert data["sections"][1]["content"] == "Some detail content."
 
 
 def test_list_spikes_after_create(client: TestClient) -> None:
@@ -188,16 +190,19 @@ def test_spike_without_title_defaults_to_untitled(client: TestClient) -> None:
     assert data["title"] == "Untitled"
 
 
-def test_spike_sections_empty_when_no_h2(client: TestClient) -> None:
+def test_spike_sections_only_intro_when_no_h2(client: TestClient) -> None:
     raw = "---\ntags: []\n---\n\n# Title Only\n\nJust a paragraph."
     data = client.post("/api/v1/spikes", json={"raw": raw}).json()
-    assert data["sections"] == []
+    assert len(data["sections"]) == 1
+    assert data["sections"][0]["heading"] is None
+    assert data["sections"][0]["content"] == "Just a paragraph."
 
 
 def test_h2_inside_fenced_code_not_treated_as_section(client: TestClient) -> None:
     raw = "---\ntags: []\n---\n\n# Title\n\n```python\n## not a section\nx = 1\n```"
     data = client.post("/api/v1/spikes", json={"raw": raw}).json()
-    assert data["sections"] == []
+    assert len(data["sections"]) == 1
+    assert data["sections"][0]["heading"] is None
 
 
 def test_title_with_inline_markup_strips_markup(client: TestClient) -> None:

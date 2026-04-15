@@ -257,11 +257,13 @@ def test_parse_spike_raw_preserved() -> None:
 
 def test_parse_spike_sections() -> None:
     result = parse_spike(_FULL_SPIKE, "spike-1")
-    assert len(result.sections) == 2
-    assert result.sections[0].heading == "Section One"
-    assert result.sections[0].content == "First section content."
-    assert result.sections[1].heading == "Section Two"
-    assert result.sections[1].content == "Second section content."
+    assert len(result.sections) == 3
+    assert result.sections[0].heading is None
+    assert result.sections[0].content == "Intro paragraph."
+    assert result.sections[1].heading == "Section One"
+    assert result.sections[1].content == "First section content."
+    assert result.sections[2].heading == "Section Two"
+    assert result.sections[2].content == "Second section content."
 
 
 def test_parse_spike_no_title_defaults_to_untitled() -> None:
@@ -270,10 +272,12 @@ def test_parse_spike_no_title_defaults_to_untitled() -> None:
     assert result.title == "Untitled"
 
 
-def test_parse_spike_no_sections() -> None:
+def test_parse_spike_no_h2_sections() -> None:
     raw = "---\ntags: []\n---\n\n# Only Title\n\nSome paragraph.\n"
     result = parse_spike(raw, "spike-x")
-    assert result.sections == []
+    assert len(result.sections) == 1
+    assert result.sections[0].heading is None
+    assert result.sections[0].content == "Some paragraph."
 
 
 def test_parse_spike_empty_tags() -> None:

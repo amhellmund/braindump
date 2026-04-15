@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCircleCheck, faArrowsRotate } from '@fortawesome/free-solid-svg-icons'
 import {
@@ -17,6 +17,7 @@ interface StatusBarProps {
   healthCheck: boolean
   totalCostUsd: number
   totalTokens: number
+  syncCount: number
 }
 
 function formatTokens(n: number): string {
@@ -136,13 +137,23 @@ function LogEntryDetail({ detail }: { detail: LogDetail }) {
   }
 }
 
-export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTokens }: StatusBarProps) {
+export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTokens, syncCount }: StatusBarProps) {
   const [showLog, setShowLog] = useState(false)
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [logLoading, setLogLoading] = useState(false)
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
   const barRef = useRef<HTMLDivElement>(null)
   const [overlayBottom, setOverlayBottom] = useState(0)
+
+  useEffect(() => {
+    if (!showLog) return
+    setLogLoading(true)
+    fetchLog(50)
+      .then(data => setLogEntries(data.entries))
+      .catch(() => setLogEntries([{ ts: '', summary: 'Failed to load log.' }]))
+      .finally(() => setLogLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncCount]) // intentionally omits showLog: only refresh on new sync events, not on open
 
   const openLog = useCallback(() => {
     if (barRef.current) {
