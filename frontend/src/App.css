@@ -106,41 +106,6 @@ body {
 }
 
 
-/* ── Sidebar add-spike action ── */
-.sidebar-actions {
-  padding: 10px 12px 2px;
-  flex-shrink: 0;
-}
-
-.btn-add-spike {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
-  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.25);
-}
-
-.btn-add-spike:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-}
-
-.btn-add-spike-icon {
-  font-size: 18px;
-  line-height: 1;
-  font-weight: 400;
-}
-
 /* ── Shared zoom/toggle button (used in GraphView and HierarchyView) ── */
 .zoom-btn {
   font-size: 12px;

@@ -10,6 +10,7 @@ import GraphView from './components/GraphView'
 import HierarchyView from './components/HierarchyView'
 import QueryBar from './components/QueryBar'
 import StatusBar from './components/StatusBar'
+import NavBar, { NavView } from './components/NavBar'
 import { ErrorToastProvider, useErrorToast } from './components/ErrorToast'
 import './App.css'
 
@@ -35,6 +36,7 @@ function AppInner() {
   const [zoomLevel, setZoomLevel] = useState<0 | 1 | 2>(2)
   const [isExpanded, setIsExpanded] = useState(false)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
+  const [activeNav, setActiveNav] = useState<NavView>('spikes')
   const [mainView, setMainView] = useState<'graph' | 'hierarchy'>('hierarchy')
   const [hierarchyGroupMode, setHierarchyGroupMode] = useState<'community' | 'tag'>('community')
   const [hierarchyData, setHierarchyData] = useState<GraphData | null>(null)
@@ -239,20 +241,16 @@ function AppInner() {
   return (
     <div className="app">
       <div className="app-panels">
+      <NavBar
+        activeView={activeNav}
+        onAddSpike={() => setRightPanel({ mode: 'editor', spike: null })}
+        onViewChange={setActiveNav}
+      />
+
       {/* Left sidebar */}
       <aside className="sidebar">
         <div className="sidebar-header">
           <img src={logo} alt="braindump" className="logo" />
-        </div>
-        <div className="sidebar-actions">
-          <button
-            className="btn-add-spike"
-            onClick={() => setRightPanel({ mode: 'editor', spike: null })}
-            aria-label="Add spike"
-          >
-            <span className="btn-add-spike-icon">+</span>
-            Add spike
-          </button>
         </div>
         <SearchBar value={search} onChange={setSearch} />
         <SpikeList
