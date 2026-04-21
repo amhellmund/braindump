@@ -1,5 +1,6 @@
 /* ── Design tokens ── */
 :root {
+  --header-height:   44px;
   --toolbar-height:  44px;
   --bottom-bar-height: 50px;
   --bg:              #0f1117;
@@ -81,28 +82,11 @@ body {
 .right-panel.expanded {
   position: fixed;
   right: 0;
-  top: 0;
+  top: var(--header-height);
   bottom: 0;
   width: 60vw;
   z-index: 50;
   border-left: 1px solid var(--border);
-}
-
-/* ── Sidebar header ── */
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  height: var(--toolbar-height);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.logo {
-  height: 24px;
-  width: auto;
-  display: block;
 }
 
 

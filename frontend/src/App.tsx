@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import logo from './assets/logo.png'
 import { Spike } from './types'
 import { fetchSpikes, fetchGraph, fetchStatus, createSpike, updateSpike, deleteSpike, GraphData } from './api'
 import SearchBar from './components/SearchBar'
@@ -11,6 +10,7 @@ import HierarchyView from './components/HierarchyView'
 import QueryBar from './components/QueryBar'
 import StatusBar from './components/StatusBar'
 import NavBar, { NavView } from './components/NavBar'
+import HeaderBar from './components/HeaderBar'
 import { ErrorToastProvider, useErrorToast } from './components/ErrorToast'
 import './App.css'
 
@@ -240,6 +240,7 @@ function AppInner() {
 
   return (
     <div className="app">
+      <HeaderBar />
       <div className="app-panels">
       <NavBar
         activeView={activeNav}
@@ -249,9 +250,6 @@ function AppInner() {
 
       {/* Left sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <img src={logo} alt="braindump" className="logo" />
-        </div>
         <SearchBar value={search} onChange={setSearch} />
         <SpikeList
           spikes={filteredSpikes}
