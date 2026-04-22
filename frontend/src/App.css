@@ -72,22 +72,33 @@ body {
 
 .right-panel {
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 .right-panel-handle {
-  width: 4px;
+  width: 1px;
   flex-shrink: 0;
   cursor: col-resize;
-  background: transparent;
-  transition: background 0.15s;
+  background: var(--border);
+  position: relative;
+  transition: background 0.15s, width 0.15s;
+}
+
+.right-panel-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
 }
 
 .right-panel-handle:hover,
-.right-panel-handle:active {
+.right-panel-handle:active,
+.right-panel-handle.resizing {
+  width: 3px;
   background: var(--accent);
 }
 

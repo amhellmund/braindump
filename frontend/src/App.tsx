@@ -40,6 +40,7 @@ function AppInner() {
     return isNaN(parsed) ? 20 : Math.min(50, Math.max(20, parsed))
   })
   const isDragging = useRef(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [activeNav, setActiveNav] = useState<NavView>('spikes')
   const [mainView, setMainView] = useState<'graph' | 'hierarchy'>('hierarchy')
@@ -246,6 +247,7 @@ function AppInner() {
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
+    setIsResizing(true)
 
     const onMouseMove = (ev: MouseEvent) => {
       if (!isDragging.current) return
@@ -255,6 +257,7 @@ function AppInner() {
 
     const onMouseUp = (ev: MouseEvent) => {
       isDragging.current = false
+      setIsResizing(false)
       const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
       const clamped = Math.min(50, Math.max(20, pct))
       setRightPanelWidth(clamped)
@@ -342,7 +345,7 @@ function AppInner() {
 
       {/* Right panel — editor or detail */}
       {rightPanel && (
-        <div className="right-panel-handle" onMouseDown={handleResizeMouseDown} />
+        <div className={`right-panel-handle${isResizing ? ' resizing' : ''}`} onMouseDown={handleResizeMouseDown} />
       )}
       {rightPanel && (
         <aside className="right-panel" style={{ width: `${rightPanelWidth}vw` }}>
