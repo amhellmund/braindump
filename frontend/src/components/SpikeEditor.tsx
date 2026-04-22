@@ -1,15 +1,60 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { EditorView, keymap, lineNumbers } from '@codemirror/view'
+import { EditorState } from '@codemirror/state'
+import { markdown } from '@codemirror/lang-markdown'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { Spike } from '../types'
 import { formatDatetime } from '../utils'
 import { uploadImage } from '../api'
-import { useErrorToast } from './ErrorToast'
+import { useErrorToast } from './ErrorToastContext'
 import MarkdownPreview from './MarkdownPreview'
 import TagsInput from './TagsInput'
 import './SpikeEditor.css'
 
+const darkTheme = EditorView.theme({
+  '&': { height: '100%' },
+  '.cm-content': {
+    fontFamily: "'JetBrains Mono','Fira Code','Menlo',monospace",
+    fontSize: '13px',
+    lineHeight: '1.7',
+    padding: '16px 16px 16px 0',
+    caretColor: 'var(--text-primary)',
+  },
+  '.cm-gutters': {
+    background: 'var(--surface)',
+    borderRight: 'none',
+    color: 'var(--text-muted)',
+    fontSize: '11px',
+    minWidth: '36px',
+    paddingRight: '8px',
+    userSelect: 'none',
+  },
+  '.cm-lineNumbers .cm-gutterElement': { textAlign: 'right', paddingLeft: '4px' },
+  '.cm-activeLine': { background: 'transparent' },
+  '.cm-activeLineGutter': { background: 'transparent' },
+  '.cm-selectionBackground': { background: 'var(--surface-active) !important' },
+  '&.cm-focused .cm-selectionBackground': { background: 'var(--surface-active) !important' },
+  '.cm-focused': { outline: 'none' },
+  '&.cm-focused': { outline: 'none' },
+  '.cm-scroller': { overflow: 'auto' },
+  '.cm-cursor': { borderLeftColor: 'var(--text-primary)' },
+}, { dark: true })
+
+const markdownHighlight = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.heading1,    color: '#a5b4fc', fontWeight: 'bold', fontSize: '1.1em' },
+  { tag: tags.heading2,    color: '#93c5fd', fontWeight: 'bold' },
+  { tag: tags.heading3,    color: '#7dd3fc', fontWeight: 'bold' },
+  { tag: tags.strong,      color: '#f1f5f9', fontWeight: 'bold' },
+  { tag: tags.emphasis,    color: '#d1d5db', fontStyle: 'italic' },
+  { tag: tags.link,        color: '#60a5fa' },
+  { tag: tags.url,         color: '#6b7e96' },
+  { tag: tags.punctuation, color: '#6b7e96' },
+]))
+
 interface Props {
-  spike: Spike | null        // null = new spike
-  allTags: string[]          // all known tags across the corpus
+  spike: Spike | null
+  allTags: string[]
   onSave: (body: string, tags: string[]) => void
   onCancel: () => void
   onClose: () => void
@@ -26,18 +71,12 @@ export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose 
   const [body, setBody] = useState(spike ? extractBody(spike.raw) : NEW_BODY)
   const [tags, setTags] = useState<string[]>(spike?.tags ?? [])
   const [preview, setPreview] = useState(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const editorContainerRef = useRef<HTMLDivElement>(null)
+  const editorViewRef = useRef<EditorView | null>(null)
+  // Evergreen ref so the keymap closure always sees the current save handler
+  const handleSaveRef = useRef<() => void>(() => {})
 
-  useEffect(() => {
-    if (spike || !textareaRef.current) return
-    // Select "New spike" (after the leading "# ") so the first keystroke replaces the title
-    const titleStart = 2
-    const titleEnd = titleStart + 'New spike'.length
-    textareaRef.current.focus()
-    textareaRef.current.setSelectionRange(titleStart, titleEnd)
-  }, [])
-
-const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
   const createdAt = spike?.createdAt ?? today
   const modifiedAt = spike?.modifiedAt ?? today
 
@@ -47,30 +86,62 @@ const today = new Date().toISOString().slice(0, 10)
 
   const handleSave = () => { if (isDirty) onSave(body, tags) }
 
-  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const imageItem = Array.from(e.clipboardData.items).find(item => item.type.startsWith('image/'))
-    if (!imageItem) return
+  useEffect(() => { handleSaveRef.current = handleSave })
 
-    e.preventDefault()
-    const file = imageItem.getAsFile()
-    if (!file) return
+  // Create the CodeMirror editor once on mount; hide/show via CSS for preview toggle
+  useEffect(() => {
+    if (!editorContainerRef.current) return
 
-    try {
-      const { url } = await uploadImage(file)
-      const markdown = `![image](${url})`
-      const el = textareaRef.current
-      if (!el) return
-      const start = el.selectionStart
-      const end = el.selectionEnd
-      setBody(prev => prev.slice(0, start) + markdown + prev.slice(end))
-      requestAnimationFrame(() => {
-        el.selectionStart = el.selectionEnd = start + markdown.length
-        el.focus()
-      })
-    } catch (err: unknown) {
-      pushError('Image upload failed', String(err))
+    const initialDoc = spike ? extractBody(spike.raw) : NEW_BODY
+
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: initialDoc,
+        extensions: [
+          markdown(),
+          lineNumbers(),
+          darkTheme,
+          markdownHighlight,
+          keymap.of([{ key: 'Ctrl-Enter', run: () => { handleSaveRef.current(); return true } }]),
+          EditorView.domEventHandlers({
+            paste(e: ClipboardEvent) {
+              const imageItem = Array.from(e.clipboardData?.items ?? [])
+                .find(item => item.type.startsWith('image/'))
+              if (!imageItem) return false
+              e.preventDefault()
+              const file = imageItem.getAsFile()
+              if (!file) return true
+              const { from, to } = view.state.selection.main
+              uploadImage(file)
+                .then(({ url }) => {
+                  const md = `![image](${url})`
+                  view.dispatch({
+                    changes: { from, to, insert: md },
+                    selection: { anchor: from + md.length },
+                  })
+                })
+                .catch((err: unknown) => pushError('Image upload failed', String(err)))
+              return true
+            },
+          }),
+          EditorView.updateListener.of(update => {
+            if (update.docChanged) setBody(update.state.doc.toString())
+          }),
+        ],
+      }),
+      parent: editorContainerRef.current,
+    })
+
+    editorViewRef.current = view
+
+    if (!spike) {
+      const titleStart = 2
+      view.dispatch({ selection: { anchor: titleStart, head: titleStart + 'New spike'.length } })
     }
-  }, [pushError])
+    view.focus()
+
+    return () => view.destroy()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- editor created once on mount
 
   return (
     <div className="spike-editor">
@@ -120,22 +191,16 @@ const today = new Date().toISOString().slice(0, 10)
 
       <div className="editor-divider" />
 
-      {/* ── Body ── */}
-      {preview ? (
+      {/* ── Body — both panels always mounted; CSS hides the inactive one ── */}
+      {preview && (
         <div className="preview">
           <MarkdownPreview raw={body} stripFrontmatter={false} />
         </div>
-      ) : (
-        <textarea
-          ref={textareaRef}
-          className="editor-textarea"
-          value={body}
-          onChange={e => setBody(e.target.value)}
-          onKeyDown={e => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSave() } }}
-          onPaste={handlePaste}
-          spellCheck={false}
-        />
       )}
+      <div
+        ref={editorContainerRef}
+        className={`editor-cm-host${preview ? ' editor-cm-hidden' : ''}`}
+      />
     </div>
   )
 }

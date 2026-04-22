@@ -1,26 +1,13 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faXmark, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { ErrorContext } from './ErrorToastContext'
 import './ErrorToast.css'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ToastEntry {
   id: number
   title: string
   detail: string
-}
-
-interface ErrorContextValue {
-  pushError: (title: string, detail: string) => void
-}
-
-// ── Context ───────────────────────────────────────────────────────────────────
-
-const ErrorContext = createContext<ErrorContextValue>({ pushError: () => {} })
-
-export function useErrorToast() {
-  return useContext(ErrorContext)
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────

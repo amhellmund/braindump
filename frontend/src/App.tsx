@@ -11,7 +11,8 @@ import QueryBar from './components/QueryBar'
 import StatusBar from './components/StatusBar'
 import NavBar, { NavView } from './components/NavBar'
 import HeaderBar from './components/HeaderBar'
-import { ErrorToastProvider, useErrorToast } from './components/ErrorToast'
+import { ErrorToastProvider } from './components/ErrorToast'
+import { useErrorToast } from './components/ErrorToastContext'
 import './App.css'
 
 type RightPanel = { mode: 'editor'; spike: Spike | null }
