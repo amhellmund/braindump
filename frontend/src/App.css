@@ -71,7 +71,6 @@ body {
 }
 
 .right-panel {
-  width: 20vw;
   flex-shrink: 0;
   border-left: 1px solid var(--border);
   overflow: hidden;
@@ -79,14 +78,17 @@ body {
   flex-direction: column;
 }
 
-.right-panel.expanded {
-  position: fixed;
-  right: 0;
-  top: var(--header-height);
-  bottom: 0;
-  width: 60vw;
-  z-index: 50;
-  border-left: 1px solid var(--border);
+.right-panel-handle {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.right-panel-handle:hover,
+.right-panel-handle:active {
+  background: var(--accent);
 }
 
 

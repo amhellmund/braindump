@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faExpand, faCompress } from '@fortawesome/free-solid-svg-icons'
 import { Spike } from '../types'
 import { formatDatetime } from '../utils'
 import { uploadImage } from '../api'
@@ -12,11 +10,9 @@ import './SpikeEditor.css'
 interface Props {
   spike: Spike | null        // null = new spike
   allTags: string[]          // all known tags across the corpus
-  expanded: boolean
   onSave: (body: string, tags: string[]) => void
   onCancel: () => void
   onClose: () => void
-  onExpandToggle: () => void
 }
 
 const NEW_BODY = `# New spike\n\n## \n\n`
@@ -25,7 +21,7 @@ function extractBody(raw: string): string {
   return raw.replace(/^---[\s\S]*?---\n/, '').trimStart()
 }
 
-export default function SpikeEditor({ spike, allTags, expanded, onSave, onCancel, onClose, onExpandToggle }: Props) {
+export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose }: Props) {
   const { pushError } = useErrorToast()
   const [body, setBody] = useState(spike ? extractBody(spike.raw) : NEW_BODY)
   const [tags, setTags] = useState<string[]>(spike?.tags ?? [])
@@ -82,14 +78,6 @@ const today = new Date().toISOString().slice(0, 10)
       {/* ── Toolbar ── */}
       <div className="editor-toolbar">
         <div className="editor-toolbar-left">
-          <button
-            className="btn-expand"
-            onClick={onExpandToggle}
-            title={expanded ? 'Shrink editor' : 'Expand editor'}
-            aria-label={expanded ? 'Shrink editor' : 'Expand editor'}
-          >
-            <FontAwesomeIcon icon={expanded ? faCompress : faExpand} />
-          </button>
           <span className="editor-title">{spike?.title ?? 'New spike'}</span>
         </div>
         <div className="editor-actions">

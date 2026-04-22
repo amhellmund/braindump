@@ -34,7 +34,12 @@ function AppInner() {
   const [selectedSectionHeading, setSelectedSectionHeading] = useState<string | null>(null)
   const [rightPanel, setRightPanel] = useState<RightPanel>(null)
   const [zoomLevel, setZoomLevel] = useState<0 | 1 | 2>(2)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    const stored = localStorage.getItem('braindump-right-panel-width')
+    const parsed = stored ? parseFloat(stored) : NaN
+    return isNaN(parsed) ? 20 : Math.min(50, Math.max(20, parsed))
+  })
+  const isDragging = useRef(false)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
   const [activeNav, setActiveNav] = useState<NavView>('spikes')
   const [mainView, setMainView] = useState<'graph' | 'hierarchy'>('hierarchy')
@@ -238,6 +243,30 @@ function AppInner() {
     }
   }
 
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return
+      const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
+      setRightPanelWidth(Math.min(50, Math.max(20, pct)))
+    }
+
+    const onMouseUp = (ev: MouseEvent) => {
+      isDragging.current = false
+      const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
+      const clamped = Math.min(50, Math.max(20, pct))
+      setRightPanelWidth(clamped)
+      localStorage.setItem('braindump-right-panel-width', String(clamped))
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
   return (
     <div className="app">
       <HeaderBar />
@@ -313,13 +342,15 @@ function AppInner() {
 
       {/* Right panel — editor or detail */}
       {rightPanel && (
-        <aside className={`right-panel${isExpanded ? ' expanded' : ''}`}>
+        <div className="right-panel-handle" onMouseDown={handleResizeMouseDown} />
+      )}
+      {rightPanel && (
+        <aside className="right-panel" style={{ width: `${rightPanelWidth}vw` }}>
           {rightPanel.mode === 'editor' ? (
             <SpikeEditor
               key={rightPanel.spike?.id ?? 'new'}
               spike={rightPanel.spike}
               allTags={allTags}
-              expanded={isExpanded}
               onSave={handleSave}
               onCancel={() => {
                 if (rightPanel.spike) {
@@ -329,17 +360,14 @@ function AppInner() {
                 }
               }}
               onClose={() => setRightPanel(null)}
-              onExpandToggle={() => setIsExpanded(p => !p)}
             />
           ) : (
             <SpikeDetail
               spike={rightPanel.spike}
               highlightSection={rightPanel.highlightSection}
-              expanded={isExpanded}
               onEdit={() => setRightPanel({ mode: 'editor', spike: rightPanel.spike })}
               onDelete={() => handleDelete(rightPanel.spike.id)}
               onClose={() => setRightPanel(null)}
-              onExpandToggle={() => setIsExpanded(p => !p)}
             />
           )}
         </aside>
