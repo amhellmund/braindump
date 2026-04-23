@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Prec } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -103,6 +103,23 @@ export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose 
           darkTheme,
           markdownHighlight,
           keymap.of([{ key: 'Ctrl-Enter', run: () => { handleSaveRef.current(); return true } }]),
+          // markdown()'s Enter handler suppresses newlines on already-empty trailing lines;
+          // override with highest priority so trailing blank lines can be added freely
+          Prec.highest(keymap.of([{
+            key: 'Enter',
+            run: (view) => {
+              const { state } = view
+              const { from } = state.selection.main
+              if (from === state.doc.length && state.doc.lineAt(from).text === '') {
+                view.dispatch({
+                  changes: { from, to: from, insert: '\n' },
+                  selection: { anchor: from + 1 },
+                })
+                return true
+              }
+              return false
+            },
+          }])),
           EditorView.domEventHandlers({
             paste(e: ClipboardEvent) {
               const imageItem = Array.from(e.clipboardData?.items ?? [])
