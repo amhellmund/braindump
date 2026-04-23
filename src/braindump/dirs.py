@@ -28,6 +28,7 @@ _CONFIG_DIR = ".config"
 _SPIKES_DIR = "spikes"
 _WIKI_DIR = "wiki"
 _CHATS_DIR = "chats"
+_STREAMS_DIR = "streams"
 _TXLOG_FILE = "txlog.jsonl"
 
 
@@ -126,3 +127,20 @@ def chats_dir(workspace: Path) -> Path:
 def chat_session_path(workspace: Path, session_id: str) -> Path:
     """Return the path to ``<workspace>/chats/{session_id}.json``."""
     return chats_dir(workspace) / f"{session_id}.json"
+
+
+def streams_dir(workspace: Path) -> Path:
+    """Return the streams directory (``<workspace>/streams/``), creating it if needed."""
+    path = workspace / _STREAMS_DIR
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def streams_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/streams/streams.json``."""
+    return streams_dir(workspace) / "streams.json"
+
+
+def assignments_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/streams/assignments.json``."""
+    return streams_dir(workspace) / "assignments.json"

@@ -141,6 +141,62 @@
   flex-shrink: 0;
 }
 
+/* ── Stream row ── */
+.editor-stream-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.editor-stream-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.editor-stream-field {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-input);
+  transition: border-color 0.15s;
+}
+
+.editor-stream-field:focus-within {
+  border-color: var(--accent);
+}
+
+.editor-stream-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 1px 2px;
+}
+
+.editor-stream-input::placeholder {
+  color: var(--text-muted);
+}
+
+.editor-stream-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.editor-stream-clear:hover {
+  color: var(--text-primary);
+}
+
 /* ── Divider ── */
 .editor-divider {
   height: 1px;

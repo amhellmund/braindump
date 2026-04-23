@@ -48,6 +48,7 @@ from braindump.dirs import (
 )
 from braindump.llm import ChatBackend
 from braindump.migrations import CURRENT_VERSIONS
+from braindump.streams import init_streams
 from braindump.types import (
     LogDetail,
     LogEntry,
@@ -153,6 +154,7 @@ def init_wiki(workspace: Path) -> None:
     _write_if_missing(hierarchy_path(workspace), "# Spike Hierarchy\n\n")
     _write_if_missing(meta_json_path(workspace), "{}\n")
     log_dir(workspace).mkdir(exist_ok=True)
+    init_streams(workspace)
 
 
 def init_versions(workspace: Path) -> None:

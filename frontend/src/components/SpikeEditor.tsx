@@ -55,7 +55,8 @@ const markdownHighlight = syntaxHighlighting(HighlightStyle.define([
 interface Props {
   spike: Spike | null
   allTags: string[]
-  onSave: (body: string, tags: string[]) => void
+  allStreams: string[]
+  onSave: (body: string, tags: string[], stream: string | null) => void
   onCancel: () => void
   onClose: () => void
 }
@@ -66,13 +67,18 @@ function extractBody(raw: string): string {
   return raw.replace(/^---[\s\S]*?---\n/, '').trimStart()
 }
 
-export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose }: Props) {
+export default function SpikeEditor({ spike, allTags, allStreams, onSave, onCancel, onClose }: Props) {
   const { pushError } = useErrorToast()
   const [body, setBody] = useState(spike ? extractBody(spike.raw) : NEW_BODY)
   const [tags, setTags] = useState<string[]>(spike?.tags ?? [])
+  const [stream, setStream] = useState<string | null>(spike?.stream ?? null)
+  const [streamOpen, setStreamOpen] = useState(false)
+  const [streamHighlight, setStreamHighlight] = useState(0)
   const [preview, setPreview] = useState(false)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
+  const streamContainerRef = useRef<HTMLDivElement>(null)
+  const streamInputRef = useRef<HTMLInputElement>(null)
   // Evergreen ref so the keymap closure always sees the current save handler
   const handleSaveRef = useRef<() => void>(() => {})
 
@@ -82,11 +88,42 @@ export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose 
 
   const originalBody = spike ? extractBody(spike.raw) : NEW_BODY
   const originalTags = spike?.tags ?? []
-  const isDirty = body !== originalBody || tags.join(',') !== originalTags.join(',')
+  const originalStream = spike?.stream ?? null
+  const isDirty = body !== originalBody || tags.join(',') !== originalTags.join(',') || stream !== originalStream
 
-  const handleSave = () => { if (isDirty) onSave(body, tags) }
+  const handleSave = () => { if (isDirty) onSave(body, tags, stream) }
 
   useEffect(() => { handleSaveRef.current = handleSave })
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!streamContainerRef.current?.contains(e.target as Node)) setStreamOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filteredStreams = allStreams.filter(
+    s => s.toLowerCase().includes((stream ?? '').toLowerCase())
+  )
+
+  const handleStreamKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setStreamHighlight(i => Math.min(i + 1, filteredStreams.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setStreamHighlight(i => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (streamOpen && filteredStreams[streamHighlight]) {
+        setStream(filteredStreams[streamHighlight])
+        setStreamOpen(false)
+      }
+    } else if (e.key === 'Escape') {
+      setStreamOpen(false)
+    }
+  }
 
   // Create the CodeMirror editor once on mount; hide/show via CSS for preview toggle
   useEffect(() => {
@@ -203,6 +240,48 @@ export default function SpikeEditor({ spike, allTags, onSave, onCancel, onClose 
             suggestions={allTags}
             onCtrlEnter={handleSave}
           />
+        </div>
+        <div className="editor-stream-row">
+          <span className="editor-tags-label">Stream</span>
+          <div className="editor-stream-wrap" ref={streamContainerRef}>
+            <div className="editor-stream-field">
+              <input
+                ref={streamInputRef}
+                className="editor-stream-input"
+                value={stream ?? ''}
+                placeholder="No stream"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setStream(e.target.value.trim() || null)
+                  setStreamOpen(true)
+                  setStreamHighlight(0)
+                }}
+                onFocus={() => setStreamOpen(true)}
+                onKeyDown={handleStreamKeyDown}
+              />
+              {stream && (
+                <button
+                  className="editor-stream-clear"
+                  onMouseDown={(e: React.MouseEvent) => { e.preventDefault(); setStream(null); streamInputRef.current?.focus() }}
+                  title="Remove stream"
+                  aria-label="Remove stream"
+                >×</button>
+              )}
+            </div>
+            {streamOpen && filteredStreams.length > 0 && (
+              <ul className="tags-dropdown">
+                {filteredStreams.map((s, i) => (
+                  <li
+                    key={s}
+                    className={`tags-dropdown-item${i === streamHighlight ? ' highlighted' : ''}`}
+                    onMouseDown={(e: React.MouseEvent) => { e.preventDefault(); setStream(s); setStreamOpen(false) }}
+                    onMouseEnter={() => setStreamHighlight(i)}
+                  >
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 

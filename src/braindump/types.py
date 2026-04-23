@@ -36,6 +36,7 @@ class WorkspaceVersions(BaseModel):
 
     wiki_schema: int = 1
     meta: int = 1
+    streams: int = 1
 
 
 class SpikeMeta(BaseModel):
@@ -62,18 +63,39 @@ class Section(BaseModel):
     content: str
 
 
+class StreamMeta(BaseModel):
+    """Metadata for a single named stream stored in ``streams/streams.json``."""
+
+    created_at: str
+    modified_at: str
+
+
+class StreamsData(BaseModel):
+    """Full contents of ``streams/streams.json`` — maps stream name to its metadata."""
+
+    streams: dict[str, StreamMeta] = {}
+
+
+class StreamsAssignments(BaseModel):
+    """Full contents of ``streams/assignments.json`` — maps spike_id to stream name."""
+
+    assignments: dict[str, str] = {}
+
+
 class InfoResponse(BaseModel):
     """Response for the /info endpoint."""
 
     version: str
     wiki_schema: int
     meta: int
+    streams: int
 
 
 class SpikePayload(BaseModel):
     """Request body for creating or updating a spike."""
 
     raw: str = Field(max_length=200_000)
+    stream: str | None = None
 
 
 class SpikeResponse(BaseModel):
@@ -88,6 +110,7 @@ class SpikeResponse(BaseModel):
     sections: list[Section]
     languages: list[str] = []
     image_count: int = 0
+    stream: str | None = None
 
 
 class ChatTurn(BaseModel):

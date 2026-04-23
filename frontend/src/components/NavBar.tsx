@@ -21,7 +21,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'spikes',  icon: faBolt,        caption: 'Spikes',   disabled: false },
   { id: 'dailies', icon: faCalendarDay, caption: 'Dailies',  disabled: true  },
-  { id: 'streams', icon: faLayerGroup,  caption: 'Streams',  disabled: true  },
+  { id: 'streams', icon: faLayerGroup,  caption: 'Streams',  disabled: false },
 ]
 
 export default function NavBar({ activeView, onAddSpike, onViewChange }: Props) {

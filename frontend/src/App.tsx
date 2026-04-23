@@ -10,6 +10,7 @@ import HierarchyView from './components/HierarchyView'
 import QueryBar from './components/QueryBar'
 import StatusBar from './components/StatusBar'
 import NavBar, { NavView } from './components/NavBar'
+import StreamsView from './components/StreamsView'
 import HeaderBar from './components/HeaderBar'
 import { ErrorToastProvider } from './components/ErrorToast'
 import { useErrorToast } from './components/ErrorToastContext'
@@ -188,6 +189,19 @@ function AppInner() {
     [spikes]
   )
 
+  // All unique stream names sorted by most-recent activity first (max spike modifiedAt per stream)
+  const allStreams = useMemo(() => {
+    const lastActivity = new Map<string, string>()
+    for (const spike of spikes) {
+      if (!spike.stream) continue
+      const prev = lastActivity.get(spike.stream) ?? ''
+      if (spike.modifiedAt > prev) lastActivity.set(spike.stream, spike.modifiedAt)
+    }
+    return [...lastActivity.keys()].sort(
+      (a, b) => (lastActivity.get(b) ?? '').localeCompare(lastActivity.get(a) ?? '')
+    )
+  }, [spikes])
+
   // Filtered spike list (sidebar)
   const filteredSpikes = useMemo(() => {
     const q = search.toLowerCase()
@@ -224,18 +238,18 @@ function AppInner() {
     }
   }
 
-  // Save a spike — receives body (no frontmatter) and tags separately
-  const handleSave = async (body: string, tags: string[]) => {
+  // Save a spike — receives body (no frontmatter), tags, and stream separately
+  const handleSave = async (body: string, tags: string[], stream: string | null) => {
     const editingSpike = rightPanel?.mode === 'editor' ? rightPanel.spike : null
     const raw = `---\ntags: [${tags.join(', ')}]\n---\n\n${body}`
 
     try {
       if (editingSpike) {
-        const updated = await updateSpike(editingSpike.id, raw)
+        const updated = await updateSpike(editingSpike.id, raw, stream)
         setSpikes(prev => prev.map(s => s.id === editingSpike.id ? updated : s))
         setRightPanel({ mode: 'detail', spike: updated, highlightSection: null })
       } else {
-        const newSpike = await createSpike(raw)
+        const newSpike = await createSpike(raw, stream)
         setSpikes(prev => [newSpike, ...prev])
         setSelectedSpikeId(newSpike.id)
         setRightPanel({ mode: 'detail', spike: newSpike, highlightSection: null })
@@ -294,54 +308,66 @@ function AppInner() {
 
       {/* Main area */}
       <main className="main">
-        {/* View toggle tab bar */}
-        <div className="main-tab-bar">
-          <div className="main-tabs">
-            <button
-              className={`main-tab${mainView === 'hierarchy' ? ' active' : ''}`}
-              onClick={handleSwitchToHierarchy}
-            >
-              Browse
-            </button>
-            <button
-              className={`main-tab${mainView === 'graph' ? ' active' : ''}`}
-              onClick={() => setMainView('graph')}
-            >
-              Graph
-            </button>
-          </div>
-        </div>
-
-        {/* Graph — hidden but NOT unmounted to preserve the Cytoscape instance */}
-        <div className={`main-view-slot${mainView === 'graph' ? '' : ' hidden'}`}>
-          <GraphView
-            nodes={graphData.nodes}
-            edges={graphData.edges}
-            selectedSpikeId={selectedSpikeId}
-            selectedSectionHeading={selectedSectionHeading}
-            zoomLevel={zoomLevel}
-            onZoomChange={(level: 0 | 1 | 2) => setZoomLevel(level)}
-            onNodeClick={handleNodeClick}
-            spikes={spikes}
-          />
-        </div>
-
-        {/* Hierarchy browse — only rendered when active */}
-        {mainView === 'hierarchy' && (
+        {activeNav === 'streams' ? (
           <div className="main-view-slot">
-            <HierarchyView
-              spikes={filteredSpikes}
-              groupMode={hierarchyGroupMode}
-              onGroupModeChange={setHierarchyGroupMode}
-              communityData={hierarchyData}
-              communityLoading={hierarchyLoading}
+            <StreamsView
+              spikes={spikes}
               selectedId={selectedSpikeId}
               onSelect={handleSpikeSelect}
             />
           </div>
-        )}
+        ) : (
+          <>
+            {/* View toggle tab bar */}
+            <div className="main-tab-bar">
+              <div className="main-tabs">
+                <button
+                  className={`main-tab${mainView === 'hierarchy' ? ' active' : ''}`}
+                  onClick={handleSwitchToHierarchy}
+                >
+                  Browse
+                </button>
+                <button
+                  className={`main-tab${mainView === 'graph' ? ' active' : ''}`}
+                  onClick={() => setMainView('graph')}
+                >
+                  Graph
+                </button>
+              </div>
+            </div>
 
-        <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
+            {/* Graph — hidden but NOT unmounted to preserve the Cytoscape instance */}
+            <div className={`main-view-slot${mainView === 'graph' ? '' : ' hidden'}`}>
+              <GraphView
+                nodes={graphData.nodes}
+                edges={graphData.edges}
+                selectedSpikeId={selectedSpikeId}
+                selectedSectionHeading={selectedSectionHeading}
+                zoomLevel={zoomLevel}
+                onZoomChange={(level: 0 | 1 | 2) => setZoomLevel(level)}
+                onNodeClick={handleNodeClick}
+                spikes={spikes}
+              />
+            </div>
+
+            {/* Hierarchy browse — only rendered when active */}
+            {mainView === 'hierarchy' && (
+              <div className="main-view-slot">
+                <HierarchyView
+                  spikes={filteredSpikes}
+                  groupMode={hierarchyGroupMode}
+                  onGroupModeChange={setHierarchyGroupMode}
+                  communityData={hierarchyData}
+                  communityLoading={hierarchyLoading}
+                  selectedId={selectedSpikeId}
+                  onSelect={handleSpikeSelect}
+                />
+              </div>
+            )}
+
+            <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
+          </>
+        )}
       </main>
 
       {/* Right panel — editor or detail */}
@@ -355,6 +381,7 @@ function AppInner() {
               key={rightPanel.spike?.id ?? 'new'}
               spike={rightPanel.spike}
               allTags={allTags}
+              allStreams={allStreams}
               onSave={handleSave}
               onCancel={() => {
                 if (rightPanel.spike) {

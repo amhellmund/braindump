@@ -45,6 +45,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from braindump import chats, dirs, health, query, storage, txlog, wiki
+from braindump import streams as streams_module
 from braindump.llm import load_backend
 from braindump.types import (
     ChatSessionResponse,
@@ -157,6 +158,7 @@ async def get_info(request: Request) -> InfoResponse:
         version=importlib.metadata.version("braindump-ai"),
         wiki_schema=versions.wiki_schema,
         meta=versions.meta,
+        streams=versions.streams,
     )
 
 
@@ -177,13 +179,16 @@ async def list_spikes(request: Request) -> list[SpikeResponse]:
     workspace: Path = request.app.state.workspace
 
     entries = wiki.list_all_meta(workspace)
+    assignments = streams_module.read_assignments(workspace)
     result: list[SpikeResponse] = []
     for entry in entries:
         try:
             raw = storage.read_spike_raw(workspace, entry.id)
         except FileNotFoundError:
             continue  # skip entries whose files were removed outside the app
-        result.append(storage.parse_spike(raw, entry.id))
+        spike = storage.parse_spike(raw, entry.id)
+        spike.stream = assignments.assignments.get(entry.id)
+        result.append(spike)
     return result
 
 
@@ -200,6 +205,10 @@ async def create_spike(request: Request, body: SpikePayload, bg: BackgroundTasks
     storage.write_spike(workspace, spike_id, raw)
     spike = storage.parse_spike(raw, spike_id)
 
+    if body.stream:
+        streams_module.set_spike_stream(workspace, spike_id, body.stream)
+    spike.stream = body.stream or None
+
     # Update meta.json immediately (no LLM) so the spike appears in listings at once.
     wiki.update_meta_json(workspace, spike)
 
@@ -215,7 +224,9 @@ async def get_spike(request: Request, spike_id: SpikeId) -> SpikeResponse:
         raw = storage.read_spike_raw(workspace, spike_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Spike not found") from exc
-    return storage.parse_spike(raw, spike_id)
+    spike = storage.parse_spike(raw, spike_id)
+    spike.stream = streams_module.get_spike_stream(workspace, spike_id)
+    return spike
 
 
 @api.put("/spikes/{spike_id}", summary="Update a spike")
@@ -235,6 +246,15 @@ async def update_spike(request: Request, spike_id: SpikeId, body: SpikePayload, 
     raw = storage.enrich_spike(body.raw, existing.createdAt, now)
     storage.write_spike(workspace, spike_id, raw)
     spike = storage.parse_spike(raw, spike_id)
+
+    if body.stream:
+        streams_module.set_spike_stream(workspace, spike_id, body.stream)
+        spike.stream = body.stream
+    elif body.stream is None and "stream" in body.model_fields_set:
+        streams_module.remove_spike_stream(workspace, spike_id)
+        spike.stream = None
+    else:
+        spike.stream = streams_module.get_spike_stream(workspace, spike_id)
 
     # Update meta.json immediately so changes are visible in listings right away.
     wiki.update_meta_json(workspace, spike)
@@ -257,6 +277,7 @@ async def delete_spike(request: Request, spike_id: SpikeId, bg: BackgroundTasks)
     storage.delete_spike_file(workspace, spike_id)
     # Remove from meta.json immediately so the spike disappears from listings at once.
     wiki.remove_from_meta_json(workspace, spike_id)
+    streams_module.remove_spike_stream(workspace, spike_id)
 
     bg.add_task(_wiki_remove_and_notify, workspace, spike_id, braindump_data_dir)
 

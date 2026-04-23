@@ -11,6 +11,7 @@ export interface Spike {
   modifiedAt: string
   raw: string        // full markdown source (frontmatter + body)
   sections: Section[]
+  stream: string | null
 }
 
 export interface GraphNode {

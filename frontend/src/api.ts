@@ -34,17 +34,17 @@ export async function fetchGraph(zoomLevel: number = 2): Promise<GraphData> {
   return request<GraphData>(`/graph?zoom=${zoomLevel}`)
 }
 
-export async function createSpike(raw: string): Promise<Spike> {
+export async function createSpike(raw: string, stream: string | null = null): Promise<Spike> {
   return request<Spike>('/spikes', {
     method: 'POST',
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({ raw, stream }),
   })
 }
 
-export async function updateSpike(id: string, raw: string): Promise<Spike> {
+export async function updateSpike(id: string, raw: string, stream: string | null = null): Promise<Spike> {
   return request<Spike>(`/spikes/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({ raw, stream }),
   })
 }
 
@@ -185,6 +185,7 @@ export interface InfoData {
   version: string
   wiki_schema: number
   meta: number
+  streams: number
 }
 
 export async function fetchInfo(): Promise<InfoData> {
