@@ -62,6 +62,14 @@ class Section(BaseModel):
     content: str
 
 
+class InfoResponse(BaseModel):
+    """Response for the /info endpoint."""
+
+    version: str
+    wiki_schema: int
+    meta: int
+
+
 class SpikePayload(BaseModel):
     """Request body for creating or updating a spike."""
 

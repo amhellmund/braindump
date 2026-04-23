@@ -17,6 +17,7 @@
 import asyncio
 import contextlib
 import dataclasses
+import importlib.metadata
 import json
 import logging
 import os
@@ -50,6 +51,7 @@ from braindump.types import (
     ChatSessionSummary,
     HealthReport,
     ImageUploadResponse,
+    InfoResponse,
     LLMConfig,
     QueryRequest,
     QueryResponse,
@@ -138,6 +140,23 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 
 api = APIRouter(prefix="/api/v1")
+
+
+@api.get("/info", summary="App and schema version info")
+async def get_info(request: Request) -> InfoResponse:
+    """Return the braindump app version and workspace schema version numbers."""
+    workspace: Path = request.app.state.workspace
+    path = dirs.versions_path(workspace)
+    versions = (
+        wiki.WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
+        if path.exists()
+        else wiki.WorkspaceVersions()
+    )
+    return InfoResponse(
+        version=importlib.metadata.version("braindump"),
+        wiki_schema=versions.wiki_schema,
+        meta=versions.meta,
+    )
 
 
 @api.get("/health", summary="Health check")

@@ -44,3 +44,50 @@
   opacity: 0.35;
   cursor: not-allowed;
 }
+
+.info-btn-wrapper {
+  position: relative;
+}
+
+.info-btn-wrapper > .header-btn {
+  opacity: 0.35;
+}
+
+.info-btn-wrapper > .header-btn:hover {
+  opacity: 1;
+}
+
+.info-panel {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 10px 14px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-panel-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.info-panel-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.info-panel-value {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-primary);
+}

@@ -181,6 +181,16 @@ export async function fetchLog(lines = 50): Promise<{ entries: LogEntry[] }> {
   return request<{ entries: LogEntry[] }>(`/braindump/log?lines=${lines}`)
 }
 
+export interface InfoData {
+  version: string
+  wiki_schema: number
+  meta: number
+}
+
+export async function fetchInfo(): Promise<InfoData> {
+  return request<InfoData>('/info')
+}
+
 export async function uploadImage(file: File): Promise<ImageUploadResponse> {
   const form = new FormData()
   form.append('file', file)
