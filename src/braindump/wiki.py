@@ -47,6 +47,7 @@ from braindump.dirs import (
     wiki_dir,
 )
 from braindump.llm import ChatBackend
+from braindump.migrations import CURRENT_VERSIONS
 from braindump.types import (
     LogDetail,
     LogEntry,
@@ -55,7 +56,6 @@ from braindump.types import (
     SpikeResponse,
     WikiRemoveLogDetail,
     WikiUpdateLogDetail,
-    WorkspaceVersions,
 )
 
 
@@ -71,9 +71,6 @@ class WikiUsage(NamedTuple):
 ########################################################################################################################
 
 _TEMPORAL_WINDOW_DAYS = 7
-
-# Current schema versions — bump when the format of the corresponding file changes.
-CURRENT_VERSIONS = WorkspaceVersions(wiki_schema=1, meta=1)
 
 # UUID pattern used when parsing hierarchy.md and connections.md
 _UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -169,43 +166,6 @@ def init_versions(workspace: Path) -> None:
     path = versions_path(workspace)
     if not path.exists():
         path.write_text(CURRENT_VERSIONS.model_dump_json(indent=2), encoding="utf-8")
-
-
-def check_versions(workspace: Path) -> list[str]:
-    """Compare ``versions.json`` against the current expected schema versions.
-
-    Returns a (possibly empty) list of human-readable warning strings, one per
-    version mismatch detected.  The caller is responsible for surfacing these to
-    the user.
-
-    Args:
-        workspace: Root workspace directory.
-
-    Returns:
-        List of warning strings; empty when everything is up-to-date.
-    """
-    path = versions_path(workspace)
-    if not path.exists():
-        return ["versions.json not found — run `braindump init <workspace>` to create it."]
-    try:
-        stored = WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as exc:
-        return [f"Could not read versions.json: {exc}"]
-
-    warnings: list[str] = []
-    if stored.wiki_schema != CURRENT_VERSIONS.wiki_schema:
-        warnings.append(
-            f"wiki/SCHEMA.md is at version {stored.wiki_schema}, "
-            f"expected {CURRENT_VERSIONS.wiki_schema}. "
-            "Re-run `braindump init <workspace>` to update it."
-        )
-    if stored.meta != CURRENT_VERSIONS.meta:
-        warnings.append(
-            f"wiki/meta.json is at version {stored.meta}, "
-            f"expected {CURRENT_VERSIONS.meta}. "
-            "Delete wiki/meta.json and restart to regenerate it."
-        )
-    return warnings
 
 
 ########################################################################################################################

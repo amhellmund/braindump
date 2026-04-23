@@ -59,6 +59,7 @@ from braindump.types import (
     SpikeResponse,
     StatusResponse,
     UsageData,
+    WorkspaceVersions,
 )
 
 _logger = logging.getLogger(__name__)
@@ -148,9 +149,9 @@ async def get_info(request: Request) -> InfoResponse:
     workspace: Path = request.app.state.workspace
     path = dirs.versions_path(workspace)
     versions = (
-        wiki.WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
+        WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
         if path.exists()
-        else wiki.WorkspaceVersions()
+        else WorkspaceVersions()
     )
     return InfoResponse(
         version=importlib.metadata.version("braindump"),
