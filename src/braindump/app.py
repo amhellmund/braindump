@@ -130,7 +130,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(
     title="braindump",
-    version="0.1.0",
+    version=importlib.metadata.version("braindump-ai"),
     lifespan=_lifespan,
     docs_url="/api/docs" if _DEV else None,
     redoc_url="/api/redoc" if _DEV else None,
@@ -154,7 +154,7 @@ async def get_info(request: Request) -> InfoResponse:
         else WorkspaceVersions()
     )
     return InfoResponse(
-        version=importlib.metadata.version("braindump"),
+        version=importlib.metadata.version("braindump-ai"),
         wiki_schema=versions.wiki_schema,
         meta=versions.meta,
     )
