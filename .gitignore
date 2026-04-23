@@ -213,3 +213,9 @@ __marimo__/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Tauri app build artifacts
+tauri_app/node_modules/
+tauri_app/src-tauri/binaries/
+tauri_app/.dist-py/
+tauri_app/.pyinstaller-work/
