@@ -17,6 +17,7 @@
 import asyncio
 import contextlib
 import dataclasses
+import importlib.metadata
 import json
 import logging
 import os
@@ -43,20 +44,28 @@ from fastapi import Path as PathParam
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from braindump import chats, dirs, health, query, storage, txlog, wiki
+from braindump import chats, daily_summary, dirs, health, query, storage, stream_summary, txlog, wiki
+from braindump import dailies as dailies_module
+from braindump import streams as streams_module
 from braindump.llm import load_backend
 from braindump.types import (
     ChatSessionResponse,
     ChatSessionSummary,
+    DailyInfo,
+    DailySummaryResponse,
     HealthReport,
     ImageUploadResponse,
+    InfoResponse,
     LLMConfig,
     QueryRequest,
     QueryResponse,
     SpikePayload,
     SpikeResponse,
     StatusResponse,
+    StreamInfo,
+    StreamSummaryResponse,
     UsageData,
+    WorkspaceVersions,
 )
 
 _logger = logging.getLogger(__name__)
@@ -127,7 +136,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 app = FastAPI(
     title="braindump",
-    version="0.1.0",
+    version=importlib.metadata.version("braindump-ai"),
     lifespan=_lifespan,
     docs_url="/api/docs" if _DEV else None,
     redoc_url="/api/redoc" if _DEV else None,
@@ -138,6 +147,25 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 
 api = APIRouter(prefix="/api/v1")
+
+
+@api.get("/info", summary="App and schema version info")
+async def get_info(request: Request) -> InfoResponse:
+    """Return the braindump app version and workspace schema version numbers."""
+    workspace: Path = request.app.state.workspace
+    path = dirs.versions_path(workspace)
+    versions = (
+        WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
+        if path.exists()
+        else WorkspaceVersions()
+    )
+    return InfoResponse(
+        version=importlib.metadata.version("braindump-ai"),
+        wiki_schema=versions.wiki_schema,
+        meta=versions.meta,
+        streams=versions.streams,
+        dailies=versions.dailies,
+    )
 
 
 @api.get("/health", summary="Health check")
@@ -157,13 +185,17 @@ async def list_spikes(request: Request) -> list[SpikeResponse]:
     workspace: Path = request.app.state.workspace
 
     entries = wiki.list_all_meta(workspace)
+    assignments = streams_module.read_assignments(workspace)
     result: list[SpikeResponse] = []
     for entry in entries:
         try:
             raw = storage.read_spike_raw(workspace, entry.id)
         except FileNotFoundError:
             continue  # skip entries whose files were removed outside the app
-        result.append(storage.parse_spike(raw, entry.id))
+        spike = storage.parse_spike(raw, entry.id)
+        spike.stream = assignments.assignments.get(entry.id)
+        spike.wikiPending = entry.wiki_pending
+        result.append(spike)
     return result
 
 
@@ -180,10 +212,15 @@ async def create_spike(request: Request, body: SpikePayload, bg: BackgroundTasks
     storage.write_spike(workspace, spike_id, raw)
     spike = storage.parse_spike(raw, spike_id)
 
-    # Update meta.json immediately (no LLM) so the spike appears in listings at once.
-    wiki.update_meta_json(workspace, spike)
+    if body.stream:
+        streams_module.set_spike_stream(workspace, spike_id, body.stream)
+    spike.stream = body.stream or None
 
-    bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
+    wiki.update_meta_json(workspace, spike, wiki_pending=not body.update_wiki)
+    spike.wikiPending = not body.update_wiki
+
+    if body.update_wiki:
+        bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
     return spike
 
 
@@ -195,7 +232,9 @@ async def get_spike(request: Request, spike_id: SpikeId) -> SpikeResponse:
         raw = storage.read_spike_raw(workspace, spike_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Spike not found") from exc
-    return storage.parse_spike(raw, spike_id)
+    spike = storage.parse_spike(raw, spike_id)
+    spike.stream = streams_module.get_spike_stream(workspace, spike_id)
+    return spike
 
 
 @api.put("/spikes/{spike_id}", summary="Update a spike")
@@ -216,10 +255,20 @@ async def update_spike(request: Request, spike_id: SpikeId, body: SpikePayload, 
     storage.write_spike(workspace, spike_id, raw)
     spike = storage.parse_spike(raw, spike_id)
 
-    # Update meta.json immediately so changes are visible in listings right away.
-    wiki.update_meta_json(workspace, spike)
+    if body.stream:
+        streams_module.set_spike_stream(workspace, spike_id, body.stream)
+        spike.stream = body.stream
+    elif body.stream is None and "stream" in body.model_fields_set:
+        streams_module.remove_spike_stream(workspace, spike_id)
+        spike.stream = None
+    else:
+        spike.stream = streams_module.get_spike_stream(workspace, spike_id)
 
-    bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
+    wiki.update_meta_json(workspace, spike, wiki_pending=not body.update_wiki)
+    spike.wikiPending = not body.update_wiki
+
+    if body.update_wiki:
+        bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
     return spike
 
 
@@ -227,7 +276,6 @@ async def update_spike(request: Request, spike_id: SpikeId, body: SpikePayload, 
 async def delete_spike(request: Request, spike_id: SpikeId, bg: BackgroundTasks) -> None:
     """Remove a spike from disk and schedule its removal from the wiki layer."""
     workspace: Path = request.app.state.workspace
-    braindump_data_dir: Path = request.app.state.braindump_data_dir
 
     try:
         storage.read_spike_raw(workspace, spike_id)  # existence check
@@ -237,8 +285,44 @@ async def delete_spike(request: Request, spike_id: SpikeId, bg: BackgroundTasks)
     storage.delete_spike_file(workspace, spike_id)
     # Remove from meta.json immediately so the spike disappears from listings at once.
     wiki.remove_from_meta_json(workspace, spike_id)
+    streams_module.remove_spike_stream(workspace, spike_id)
 
-    bg.add_task(_wiki_remove_and_notify, workspace, spike_id, braindump_data_dir)
+    bg.add_task(_wiki_remove_and_notify, workspace, spike_id)
+
+
+@api.post("/spikes/{spike_id}/update-wiki", summary="Trigger wiki update for one spike", status_code=202)
+async def trigger_spike_wiki_update(request: Request, spike_id: SpikeId, bg: BackgroundTasks) -> dict[str, int]:
+    """Queue a wiki update for a single spike that has a pending wiki update."""
+    workspace: Path = request.app.state.workspace
+    braindump_data_dir: Path = request.app.state.braindump_data_dir
+
+    try:
+        raw = storage.read_spike_raw(workspace, spike_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Spike not found") from exc
+
+    spike = storage.parse_spike(raw, spike_id)
+    spike.stream = streams_module.get_spike_stream(workspace, spike_id)
+    bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
+    return {"queued": 1}
+
+
+@api.post("/wiki/trigger-pending", summary="Trigger wiki updates for all pending spikes", status_code=202)
+async def trigger_pending_wiki_updates(request: Request, bg: BackgroundTasks) -> dict[str, int]:
+    """Queue wiki updates for all spikes saved without a wiki update."""
+    workspace: Path = request.app.state.workspace
+    braindump_data_dir: Path = request.app.state.braindump_data_dir
+
+    pending_ids = wiki.list_pending_spike_ids(workspace)
+    for spike_id in pending_ids:
+        try:
+            raw = storage.read_spike_raw(workspace, spike_id)
+        except FileNotFoundError:
+            continue
+        spike = storage.parse_spike(raw, spike_id)
+        spike.stream = streams_module.get_spike_stream(workspace, spike_id)
+        bg.add_task(_wiki_update_and_notify, workspace, spike, braindump_data_dir)
+    return {"queued": len(pending_ids)}
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +440,162 @@ async def get_chat(request: Request, session_id: SpikeId) -> ChatSessionResponse
 # ---------------------------------------------------------------------------
 # Health check route
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Stream routes
+# ---------------------------------------------------------------------------
+
+
+@api.get("/streams", summary="List all named streams with metadata")
+async def list_streams(request: Request) -> list[StreamInfo]:
+    """Return all named streams with spike counts and summary state."""
+    workspace: Path = request.app.state.workspace
+    streams_data = streams_module.read_streams(workspace)
+    assignments = streams_module.read_assignments(workspace)
+
+    spike_counts: dict[str, int] = {}
+    for sname in assignments.assignments.values():
+        spike_counts[sname] = spike_counts.get(sname, 0) + 1
+
+    result: list[StreamInfo] = []
+    for name, meta in streams_data.streams.items():
+        pending = meta.summary_at is None or meta.modified_at > meta.summary_at
+        result.append(
+            StreamInfo(
+                name=name,
+                created_at=meta.created_at,
+                modified_at=meta.modified_at,
+                summary_at=meta.summary_at,
+                spike_count=spike_counts.get(name, 0),
+                summary_pending=pending,
+            )
+        )
+    result.sort(key=lambda s: s.modified_at, reverse=True)
+    return result
+
+
+@api.get("/streams/{stream_name}/summary", summary="Get stored summary for a stream")
+async def get_stream_summary(request: Request, stream_name: str) -> StreamSummaryResponse:
+    """Return the stored summary markdown for a named stream.
+
+    Returns 404 if the stream does not exist or no summary has been generated yet.
+    """
+    workspace: Path = request.app.state.workspace
+    streams_data = streams_module.read_streams(workspace)
+    if stream_name not in streams_data.streams:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    content = streams_module.read_summary(workspace, stream_name)
+    if content is None:
+        raise HTTPException(status_code=404, detail="No summary generated yet")
+    meta = streams_data.streams[stream_name]
+    return StreamSummaryResponse(
+        stream_name=stream_name,
+        content=content,
+        generated_at=meta.summary_at or "",
+    )
+
+
+@api.post("/streams/{stream_name}/summarize", summary="Trigger background AI summary for a stream", status_code=202)
+async def summarize_stream(request: Request, stream_name: str, bg: BackgroundTasks) -> dict[str, int]:
+    """Queue a background AI summary generation for the named stream.
+
+    Returns 404 if the stream does not exist, 422 if it has no spikes.
+    """
+    workspace: Path = request.app.state.workspace
+    braindump_data_dir: Path = request.app.state.braindump_data_dir
+
+    streams_data = streams_module.read_streams(workspace)
+    if stream_name not in streams_data.streams:
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+    assignments = streams_module.read_assignments(workspace)
+    spike_ids = [sid for sid, sname in assignments.assignments.items() if sname == stream_name]
+    if not spike_ids:
+        raise HTTPException(status_code=422, detail=f"Stream '{stream_name}' has no spikes")
+
+    bg.add_task(_stream_summary_and_notify, workspace, stream_name, braindump_data_dir)
+    return {"queued": 1}
+
+
+# ---------------------------------------------------------------------------
+# Dailies routes
+# ---------------------------------------------------------------------------
+
+
+@api.get("/dailies", summary="List all days with spike activity")
+async def list_dailies(request: Request) -> list[DailyInfo]:
+    """Return all days that have spikes, with spike counts and summary state."""
+    workspace: Path = request.app.state.workspace
+    all_meta = wiki.list_all_meta(workspace)
+
+    day_spikes: dict[str, list[str]] = {}
+    day_max_modified: dict[str, str] = {}
+    for entry in all_meta:
+        date = _spike_date(entry.created_at)
+        if not date:
+            continue
+        day_spikes.setdefault(date, []).append(entry.id)
+        prev = day_max_modified.get(date, "")
+        if entry.modified_at > prev:
+            day_max_modified[date] = entry.modified_at
+
+    dailies_data = dailies_module.read_dailies(workspace)
+
+    result: list[DailyInfo] = []
+    for date, spike_ids in day_spikes.items():
+        meta = dailies_data.dailies.get(date)
+        summary_at = meta.summary_at if meta else None
+        max_modified = day_max_modified.get(date, "")
+        pending = summary_at is None or max_modified > summary_at
+        result.append(
+            DailyInfo(
+                date=date,
+                spike_count=len(spike_ids),
+                summary_at=summary_at,
+                summary_pending=pending,
+            )
+        )
+
+    result.sort(key=lambda d: d.date, reverse=True)
+    return result
+
+
+@api.get("/dailies/{date}/summary", summary="Get stored summary for a day")
+async def get_daily_summary(request: Request, date: str) -> DailySummaryResponse:
+    """Return the stored summary markdown for a given day.
+
+    Returns 404 if no summary has been generated yet for that date.
+    """
+    workspace: Path = request.app.state.workspace
+    content = dailies_module.read_daily_summary(workspace, date)
+    if content is None:
+        raise HTTPException(status_code=404, detail="No summary generated yet")
+    dailies_data = dailies_module.read_dailies(workspace)
+    meta = dailies_data.dailies.get(date)
+    return DailySummaryResponse(
+        date=date,
+        content=content,
+        generated_at=meta.summary_at or "" if meta else "",
+    )
+
+
+@api.post("/dailies/{date}/summarize", summary="Trigger background AI summary for a day", status_code=202)
+async def summarize_daily(request: Request, date: str, bg: BackgroundTasks) -> dict[str, int]:
+    """Queue a background AI summary generation for the given day.
+
+    Returns 422 if the day has no spikes.
+    """
+    workspace: Path = request.app.state.workspace
+    braindump_data_dir: Path = request.app.state.braindump_data_dir
+
+    all_meta = wiki.list_all_meta(workspace)
+    spike_ids = [m.id for m in all_meta if _spike_date(m.created_at) == date]
+    if not spike_ids:
+        raise HTTPException(status_code=422, detail=f"No spikes found for date '{date}'")
+
+    bg.add_task(_daily_summary_and_notify, workspace, date, braindump_data_dir)
+    return {"queued": 1}
 
 
 @api.get("/wiki/health", summary="Wiki consistency health check")
@@ -502,6 +742,14 @@ def _save_usage(workspace: Path) -> None:
     )
 
 
+def _spike_date(created_at: str) -> str:
+    """Extract the UTC date (YYYY-MM-DD) from an ISO-8601 timestamp, or '' on error."""
+    try:
+        return datetime.fromisoformat(created_at).date().isoformat()
+    except (ValueError, AttributeError):
+        return ""
+
+
 async def _wiki_update_and_notify(
     workspace: Path,
     spike: SpikeResponse,
@@ -534,19 +782,69 @@ async def _wiki_update_and_notify(
     )
 
 
+async def _stream_summary_and_notify(
+    workspace: Path,
+    stream_name: str,
+    braindump_data_dir: Path,
+) -> None:
+    """Call the LLM to generate a stream summary, then broadcast stream_summary_done."""
+    _state.active_syncs += 1
+    await _ws_manager.broadcast({"type": "stream_summary_start", "stream_name": stream_name})
+    try:
+        backend = load_backend(braindump_data_dir)
+        async with _wiki_lock:
+            await stream_summary.generate_stream_summary(workspace, stream_name, backend)
+    except Exception as exc:
+        error_msg = str(exc)
+        wiki.append_log(workspace, f"Stream summary failed for '{stream_name}': {error_msg}")
+        await _ws_manager.broadcast({"type": "sync_error", "spike_id": None, "error": error_msg})
+    _state.active_syncs -= 1
+    await _ws_manager.broadcast(
+        {
+            "type": "stream_summary_done",
+            "stream_name": stream_name,
+            "syncing": _state.active_syncs > 0,
+        }
+    )
+
+
+async def _daily_summary_and_notify(
+    workspace: Path,
+    date: str,
+    braindump_data_dir: Path,
+) -> None:
+    """Call the LLM to generate a daily summary, then broadcast daily_summary_done."""
+    _state.active_syncs += 1
+    await _ws_manager.broadcast({"type": "daily_summary_start", "date": date})
+    try:
+        backend = load_backend(braindump_data_dir)
+        async with _wiki_lock:
+            await daily_summary.generate_daily_summary(workspace, date, backend)
+    except Exception as exc:
+        error_msg = str(exc)
+        wiki.append_log(workspace, f"Daily summary failed for '{date}': {error_msg}")
+        await _ws_manager.broadcast({"type": "sync_error", "spike_id": None, "error": error_msg})
+    _state.active_syncs -= 1
+    await _ws_manager.broadcast(
+        {
+            "type": "daily_summary_done",
+            "date": date,
+            "syncing": _state.active_syncs > 0,
+        }
+    )
+
+
 async def _wiki_remove_and_notify(
     workspace: Path,
     spike_id: str,
-    braindump_data_dir: Path,
 ) -> None:
-    """Call the LLM to remove the spike from the wiki layer, then broadcast sync_done."""
+    """Remove the spike from the wiki layer, then broadcast sync_done."""
     _state.active_syncs += 1
     await _ws_manager.broadcast({"type": "sync_start", "spike_id": spike_id})
     usage = wiki.WikiUsage(cost_usd=0.0, total_tokens=0)
     try:
-        backend = load_backend(braindump_data_dir)
         async with _wiki_lock:
-            usage = await wiki.remove_spike_from_wiki(workspace, spike_id, backend)
+            usage = await wiki.remove_spike_from_wiki(workspace, spike_id)
     except Exception as exc:
         error_msg = str(exc)
         wiki.append_log(workspace, f"Sync failed for spike removal {spike_id}: {error_msg}")

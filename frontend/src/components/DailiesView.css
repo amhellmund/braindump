@@ -1,0 +1,174 @@
+.dailies-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* ── Body ── */
+.dailies-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.dailies-empty {
+  padding: 24px 20px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── Group header ── */
+.dailies-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+
+.dailies-group-header:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.dailies-chevron {
+  font-size: 14px;
+  transition: transform 0.15s;
+  display: inline-block;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.dailies-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.dailies-group-title-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.dailies-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dailies-group-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  flex-shrink: 0;
+}
+
+/* ── Summary action area ── */
+.dailies-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.dailies-summary-last {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+  padding-right: 2px;
+  margin-left: 6px;
+}
+
+.dailies-action-btn {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.dailies-action-btn:hover:not(:disabled) {
+  background: var(--surface-active);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.dailies-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dailies-summarize-btn.pending {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.dailies-summarize-btn.pending:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+
+@keyframes dailies-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.dailies-summarize-btn.loading {
+  animation: dailies-pulse 1s ease-in-out infinite;
+}
+
+/* ── Spike row ── */
+.dailies-spike-row {
+  padding: 9px 16px 9px 28px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.1s;
+}
+
+.dailies-spike-row:hover {
+  background: var(--surface-hover);
+}
+
+.dailies-spike-row.selected {
+  background: var(--surface-active);
+  border-left-color: var(--accent);
+}
+
+.dailies-spike-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dailies-spike-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}

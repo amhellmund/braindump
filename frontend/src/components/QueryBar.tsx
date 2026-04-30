@@ -9,7 +9,7 @@ import {
   fetchChatSessions,
   fetchChatSession,
 } from '../api'
-import { useErrorToast } from './ErrorToast'
+import { useErrorToast } from './ErrorToastContext'
 import MarkdownPreview from './MarkdownPreview'
 import './QueryBar.css'
 

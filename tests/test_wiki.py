@@ -21,6 +21,9 @@ from pathlib import Path
 
 from braindump.types import SpikeResponse
 from braindump.wiki import (
+    _remove_from_connections,
+    _remove_from_hierarchy,
+    _remove_from_index,
     _within_days,
     append_log,
     connections_path,
@@ -354,3 +357,95 @@ def test_get_graph_zoom1_returns_cluster_and_spike_nodes(tmp_path: Path) -> None
     assert "spike" in types
     cluster_edges = [e for e in data["edges"] if e["type"] == "cluster"]
     assert len(cluster_edges) == 1
+
+
+########################################################################################################################
+# _remove_from_index
+########################################################################################################################
+
+_ID_A = "aaaaaaaa-0000-0000-0000-000000000001"
+_ID_B = "bbbbbbbb-0000-0000-0000-000000000002"
+
+
+def test_remove_from_index_removes_target_section() -> None:
+    text = f"# Braindump Index\n\n## {_ID_A}\n**Title:** Spike A\n\n## {_ID_B}\n**Title:** Spike B\n"
+    result = _remove_from_index(text, _ID_A)
+    assert _ID_A not in result
+    assert _ID_B in result
+
+
+def test_remove_from_index_last_section() -> None:
+    text = f"## {_ID_A}\n**Title:** Spike A\n\n## {_ID_B}\n**Title:** Spike B\n"
+    result = _remove_from_index(text, _ID_B)
+    assert _ID_B not in result
+    assert _ID_A in result
+
+
+def test_remove_from_index_noop_when_absent() -> None:
+    text = f"## {_ID_B}\n**Title:** Spike B\n"
+    result = _remove_from_index(text, _ID_A)
+    assert result == text
+
+
+def test_remove_from_index_no_double_blank_lines() -> None:
+    text = f"## {_ID_A}\n**Title:** A\n\n\n## {_ID_B}\n**Title:** B\n"
+    result = _remove_from_index(text, _ID_A)
+    assert "\n\n\n" not in result
+
+
+########################################################################################################################
+# _remove_from_connections
+########################################################################################################################
+
+
+def test_remove_from_connections_removes_lines_mentioning_id() -> None:
+    text = f"- {_ID_A} <-> {_ID_B}: shared concept\n- {_ID_B} <-> {_ID_A}: another link\n"
+    result = _remove_from_connections(text, _ID_A)
+    assert _ID_A not in result
+
+
+def test_remove_from_connections_keeps_unrelated_lines() -> None:
+    id_c = "cccccccc-0000-0000-0000-000000000003"
+    text = f"- {_ID_A} <-> {_ID_B}: shared concept\n- {_ID_B} <-> {id_c}: other link\n"
+    result = _remove_from_connections(text, _ID_A)
+    assert id_c in result
+    assert _ID_B in result
+
+
+def test_remove_from_connections_noop_when_absent() -> None:
+    text = f"- {_ID_B} <-> {_ID_B}: self\n"
+    result = _remove_from_connections(text, _ID_A)
+    assert _ID_B in result
+
+
+########################################################################################################################
+# _remove_from_hierarchy
+########################################################################################################################
+
+
+def test_remove_from_hierarchy_removes_spike_bullet() -> None:
+    text = f"## Community: Testing\n- {_ID_A} (Spike A)\n- {_ID_B} (Spike B)\n"
+    result = _remove_from_hierarchy(text, _ID_A)
+    assert _ID_A not in result
+    assert _ID_B in result
+
+
+def test_remove_from_hierarchy_drops_empty_community() -> None:
+    text = f"## Community: Solo\n- {_ID_A} (Only Spike)\n"
+    result = _remove_from_hierarchy(text, _ID_A)
+    assert "Community: Solo" not in result
+
+
+def test_remove_from_hierarchy_keeps_other_communities() -> None:
+    text = f"## Community: Alpha\n- {_ID_A} (Spike A)\n\n## Community: Beta\n- {_ID_B} (Spike B)\n"
+    result = _remove_from_hierarchy(text, _ID_A)
+    assert "Community: Alpha" not in result
+    assert "Community: Beta" in result
+    assert _ID_B in result
+
+
+def test_remove_from_hierarchy_noop_when_absent() -> None:
+    text = f"## Community: Beta\n- {_ID_B} (Spike B)\n"
+    result = _remove_from_hierarchy(text, _ID_A)
+    assert "Community: Beta" in result
+    assert _ID_B in result

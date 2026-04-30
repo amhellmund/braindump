@@ -28,6 +28,7 @@ _CONFIG_DIR = ".config"
 _SPIKES_DIR = "spikes"
 _WIKI_DIR = "wiki"
 _CHATS_DIR = "chats"
+_STREAMS_DIR = "streams"
 _TXLOG_FILE = "txlog.jsonl"
 
 
@@ -126,3 +127,59 @@ def chats_dir(workspace: Path) -> Path:
 def chat_session_path(workspace: Path, session_id: str) -> Path:
     """Return the path to ``<workspace>/chats/{session_id}.json``."""
     return chats_dir(workspace) / f"{session_id}.json"
+
+
+def streams_dir(workspace: Path) -> Path:
+    """Return the streams directory (``<workspace>/streams/``), creating it if needed."""
+    path = workspace / _STREAMS_DIR
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def streams_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/streams/streams.json``."""
+    return streams_dir(workspace) / "streams.json"
+
+
+def assignments_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/streams/assignments.json``."""
+    return streams_dir(workspace) / "assignments.json"
+
+
+def stream_summaries_dir(workspace: Path) -> Path:
+    """Return the stream summaries directory (``<workspace>/streams/summaries/``), creating it if needed."""
+    path = streams_dir(workspace) / "summaries"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def stream_summary_path(workspace: Path, safe_name: str) -> Path:
+    """Return the path to ``<workspace>/streams/summaries/{safe_name}.md``."""
+    return stream_summaries_dir(workspace) / f"{safe_name}.md"
+
+
+_DAILIES_DIR = "dailies"
+
+
+def dailies_dir(workspace: Path) -> Path:
+    """Return the dailies directory (``<workspace>/dailies/``), creating it if needed."""
+    path = workspace / _DAILIES_DIR
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def dailies_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/dailies/dailies.json``."""
+    return dailies_dir(workspace) / "dailies.json"
+
+
+def daily_summaries_dir(workspace: Path) -> Path:
+    """Return the daily summaries directory (``<workspace>/dailies/summaries/``), creating it if needed."""
+    path = dailies_dir(workspace) / "summaries"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def daily_summary_path(workspace: Path, date: str) -> Path:
+    """Return the path to ``<workspace>/dailies/summaries/{date}.md``."""
+    return daily_summaries_dir(workspace) / f"{date}.md"

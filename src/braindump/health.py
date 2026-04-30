@@ -155,7 +155,7 @@ async def repair_inconsistencies(workspace: Path, report: HealthReport, backend:
     # 2. Wiki entries with no spike file → remove them
     for spike_id in report.stale_index_entries:
         try:
-            usage = await wiki.remove_spike_from_wiki(workspace, spike_id, backend)
+            usage = await wiki.remove_spike_from_wiki(workspace, spike_id)
             total_cost += usage.cost_usd
             total_tokens += usage.total_tokens
             already_handled.add(spike_id)
@@ -209,7 +209,7 @@ async def repair_inconsistencies(workspace: Path, report: HealthReport, backend:
                 spike = storage.parse_spike(raw, spike_id)
                 usage = await wiki.update_wiki_for_spike(workspace, spike, backend)
             elif op == txlog.TxOp.REMOVE_SPIKE:
-                usage = await wiki.remove_spike_from_wiki(workspace, spike_id, backend)
+                usage = await wiki.remove_spike_from_wiki(workspace, spike_id)
             else:
                 continue
             total_cost += usage.cost_usd

@@ -3,7 +3,7 @@
  * All functions throw on non-OK responses.
  */
 
-import { GraphEdge, GraphNode, Spike } from './types'
+import { Daily, GraphEdge, GraphNode, Spike, Stream } from './types'
 
 const BASE = '/api/v1'
 
@@ -34,18 +34,35 @@ export async function fetchGraph(zoomLevel: number = 2): Promise<GraphData> {
   return request<GraphData>(`/graph?zoom=${zoomLevel}`)
 }
 
-export async function createSpike(raw: string): Promise<Spike> {
+export async function createSpike(
+  raw: string,
+  stream: string | null = null,
+  updateWiki = true,
+): Promise<Spike> {
   return request<Spike>('/spikes', {
     method: 'POST',
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({ raw, stream, update_wiki: updateWiki }),
   })
 }
 
-export async function updateSpike(id: string, raw: string): Promise<Spike> {
+export async function updateSpike(
+  id: string,
+  raw: string,
+  stream: string | null = null,
+  updateWiki = true,
+): Promise<Spike> {
   return request<Spike>(`/spikes/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ raw }),
+    body: JSON.stringify({ raw, stream, update_wiki: updateWiki }),
   })
+}
+
+export async function updateSpikeWiki(id: string): Promise<void> {
+  return request<void>(`/spikes/${id}/update-wiki`, { method: 'POST' })
+}
+
+export async function triggerPendingWikiUpdates(): Promise<{ queued: number }> {
+  return request<{ queued: number }>('/wiki/trigger-pending', { method: 'POST' })
 }
 
 export async function deleteSpike(id: string): Promise<void> {
@@ -165,11 +182,29 @@ export interface HealthRepairLogDetail {
   errors: string[]
 }
 
+export interface StreamSummaryLogDetail {
+  kind: 'stream_summary'
+  stream_name: string
+  spike_count: number
+  cost_usd: number
+  total_tokens: number
+}
+
+export interface DailySummaryLogDetail {
+  kind: 'daily_summary'
+  date: string
+  spike_count: number
+  cost_usd: number
+  total_tokens: number
+}
+
 export type LogDetail =
   | WikiUpdateLogDetail
   | WikiRemoveLogDetail
   | HealthCheckLogDetail
   | HealthRepairLogDetail
+  | StreamSummaryLogDetail
+  | DailySummaryLogDetail
 
 export interface LogEntry {
   ts: string
@@ -179,6 +214,54 @@ export interface LogEntry {
 
 export async function fetchLog(lines = 50): Promise<{ entries: LogEntry[] }> {
   return request<{ entries: LogEntry[] }>(`/braindump/log?lines=${lines}`)
+}
+
+export interface InfoData {
+  version: string
+  wiki_schema: number
+  meta: number
+  streams: number
+  dailies: number
+}
+
+export async function fetchInfo(): Promise<InfoData> {
+  return request<InfoData>('/info')
+}
+
+export interface StreamSummaryData {
+  stream_name: string
+  content: string
+  generated_at: string
+}
+
+export async function fetchStreams(): Promise<Stream[]> {
+  return request<Stream[]>('/streams')
+}
+
+export async function fetchStreamSummary(streamName: string): Promise<StreamSummaryData> {
+  return request<StreamSummaryData>(`/streams/${encodeURIComponent(streamName)}/summary`)
+}
+
+export async function triggerStreamSummary(streamName: string): Promise<void> {
+  return request<void>(`/streams/${encodeURIComponent(streamName)}/summarize`, { method: 'POST' })
+}
+
+export interface DailySummaryData {
+  date: string
+  content: string
+  generated_at: string
+}
+
+export async function fetchDailies(): Promise<Daily[]> {
+  return request<Daily[]>('/dailies')
+}
+
+export async function fetchDailySummary(date: string): Promise<DailySummaryData> {
+  return request<DailySummaryData>(`/dailies/${encodeURIComponent(date)}/summary`)
+}
+
+export async function triggerDailySummary(date: string): Promise<void> {
+  return request<void>(`/dailies/${encodeURIComponent(date)}/summarize`, { method: 'POST' })
 }
 
 export async function uploadImage(file: File): Promise<ImageUploadResponse> {

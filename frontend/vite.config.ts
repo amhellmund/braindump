@@ -22,6 +22,13 @@ export default defineConfig({
             '@fortawesome/react-fontawesome',
             '@fortawesome/free-solid-svg-icons',
           ],
+          'vendor-codemirror': [
+            'codemirror',
+            '@codemirror/lang-markdown',
+            '@codemirror/language',
+            '@codemirror/state',
+            '@codemirror/view',
+          ],
         },
       },
     },

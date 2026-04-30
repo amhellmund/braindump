@@ -1,7 +1,22 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import logo from './assets/logo.png'
-import { Spike } from './types'
-import { fetchSpikes, fetchGraph, fetchStatus, createSpike, updateSpike, deleteSpike, GraphData } from './api'
+import { Daily, Spike, Stream } from './types'
+import {
+  fetchSpikes,
+  fetchGraph,
+  fetchStatus,
+  createSpike,
+  updateSpike,
+  updateSpikeWiki,
+  triggerPendingWikiUpdates,
+  deleteSpike,
+  fetchStreams,
+  fetchStreamSummary,
+  triggerStreamSummary,
+  fetchDailies,
+  fetchDailySummary,
+  triggerDailySummary,
+  GraphData,
+} from './api'
 import SearchBar from './components/SearchBar'
 import SpikeList from './components/SpikeList'
 import SpikeEditor from './components/SpikeEditor'
@@ -10,11 +25,19 @@ import GraphView from './components/GraphView'
 import HierarchyView from './components/HierarchyView'
 import QueryBar from './components/QueryBar'
 import StatusBar from './components/StatusBar'
-import { ErrorToastProvider, useErrorToast } from './components/ErrorToast'
+import NavBar, { NavView } from './components/NavBar'
+import StreamsView from './components/StreamsView'
+import StreamSummaryPanel from './components/StreamSummaryPanel'
+import DailiesView from './components/DailiesView'
+import HeaderBar from './components/HeaderBar'
+import { ErrorToastProvider } from './components/ErrorToast'
+import { useErrorToast } from './components/ErrorToastContext'
 import './App.css'
 
 type RightPanel = { mode: 'editor'; spike: Spike | null }
                 | { mode: 'detail'; spike: Spike; highlightSection: string | null }
+                | { mode: 'stream-summary'; streamName: string; content: string; generatedAt: string }
+                | { mode: 'daily-summary'; date: string; content: string; generatedAt: string }
                 | null
 
 export default function App() {
@@ -33,8 +56,15 @@ function AppInner() {
   const [selectedSectionHeading, setSelectedSectionHeading] = useState<string | null>(null)
   const [rightPanel, setRightPanel] = useState<RightPanel>(null)
   const [zoomLevel, setZoomLevel] = useState<0 | 1 | 2>(2)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    const stored = localStorage.getItem('braindump-right-panel-width')
+    const parsed = stored ? parseFloat(stored) : NaN
+    return isNaN(parsed) ? 20 : Math.min(50, Math.max(20, parsed))
+  })
+  const isDragging = useRef(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] })
+  const [activeNav, setActiveNav] = useState<NavView>('spikes')
   const [mainView, setMainView] = useState<'graph' | 'hierarchy'>('hierarchy')
   const [hierarchyGroupMode, setHierarchyGroupMode] = useState<'community' | 'tag'>('community')
   const [hierarchyData, setHierarchyData] = useState<GraphData | null>(null)
@@ -44,11 +74,21 @@ function AppInner() {
   const [totalCostUsd, setTotalCostUsd] = useState(0)
   const [totalTokens, setTotalTokens] = useState(0)
   const [syncCount, setSyncCount] = useState(0)
+  const [streams, setStreams] = useState<Stream[]>([])
+  const [summarizingStreams, setSummarizingStreams] = useState<Set<string>>(new Set())
+  const [dailies, setDailies] = useState<Daily[]>([])
+  const [summarizingDailies, setSummarizingDailies] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchSpikes()
       .then(setSpikes)
       .catch((err: unknown) => pushError('Failed to load spikes', String(err)))
+    fetchStreams()
+      .then(setStreams)
+      .catch(() => {})
+    fetchDailies()
+      .then(setDailies)
+      .catch(() => {})
     fetchStatus()
       .then(s => {
         setIsSyncing(s.syncing)
@@ -101,6 +141,8 @@ function AppInner() {
           const msg = JSON.parse(event.data as string) as {
             type: string
             spike_id?: string | null
+            stream_name?: string
+            date?: string
             syncing?: boolean
             health_check?: boolean
             total_cost_usd?: number
@@ -130,6 +172,24 @@ function AppInner() {
           } else if (msg.type === 'usage_update') {
             if (msg.total_cost_usd !== undefined) setTotalCostUsd(msg.total_cost_usd)
             if (msg.total_tokens !== undefined) setTotalTokens(msg.total_tokens)
+          } else if (msg.type === 'stream_summary_start' && msg.stream_name) {
+            setSummarizingStreams(prev => new Set(prev).add(msg.stream_name!))
+          } else if (msg.type === 'stream_summary_done' && msg.stream_name) {
+            setSummarizingStreams(prev => {
+              const next = new Set(prev)
+              next.delete(msg.stream_name!)
+              return next
+            })
+            fetchStreams().then(setStreams).catch(() => {})
+          } else if (msg.type === 'daily_summary_start' && msg.date) {
+            setSummarizingDailies(prev => new Set(prev).add(msg.date!))
+          } else if (msg.type === 'daily_summary_done' && msg.date) {
+            setSummarizingDailies(prev => {
+              const next = new Set(prev)
+              next.delete(msg.date!)
+              return next
+            })
+            fetchDailies().then(setDailies).catch(() => {})
           }
         } catch {
           // ignore malformed messages
@@ -179,6 +239,21 @@ function AppInner() {
     [spikes]
   )
 
+  // All unique stream names sorted by most-recent activity first (max spike modifiedAt per stream)
+  const allStreams = useMemo(() => {
+    const lastActivity = new Map<string, string>()
+    for (const spike of spikes) {
+      if (!spike.stream) continue
+      const prev = lastActivity.get(spike.stream) ?? ''
+      if (spike.modifiedAt > prev) lastActivity.set(spike.stream, spike.modifiedAt)
+    }
+    return [...lastActivity.keys()].sort(
+      (a, b) => (lastActivity.get(b) ?? '').localeCompare(lastActivity.get(a) ?? '')
+    )
+  }, [spikes])
+
+  const pendingCount = useMemo(() => spikes.filter(s => s.wikiPending).length, [spikes])
+
   // Filtered spike list (sidebar)
   const filteredSpikes = useMemo(() => {
     const q = search.toLowerCase()
@@ -215,115 +290,225 @@ function AppInner() {
     }
   }
 
-  // Save a spike — receives body (no frontmatter) and tags separately
-  const handleSave = async (body: string, tags: string[]) => {
+  // Save a spike — receives body (no frontmatter), tags, stream, and whether to update the wiki
+  const handleSave = async (body: string, tags: string[], stream: string | null, updateWiki: boolean) => {
     const editingSpike = rightPanel?.mode === 'editor' ? rightPanel.spike : null
     const raw = `---\ntags: [${tags.join(', ')}]\n---\n\n${body}`
 
     try {
       if (editingSpike) {
-        const updated = await updateSpike(editingSpike.id, raw)
+        const updated = await updateSpike(editingSpike.id, raw, stream, updateWiki)
         setSpikes(prev => prev.map(s => s.id === editingSpike.id ? updated : s))
         setRightPanel({ mode: 'detail', spike: updated, highlightSection: null })
       } else {
-        const newSpike = await createSpike(raw)
+        const newSpike = await createSpike(raw, stream, updateWiki)
         setSpikes(prev => [newSpike, ...prev])
         setSelectedSpikeId(newSpike.id)
         setRightPanel({ mode: 'detail', spike: newSpike, highlightSection: null })
       }
+      fetchStreams().then(setStreams).catch(() => {})
     } catch (err: unknown) {
       pushError('Failed to save spike', String(err))
     }
   }
 
+  const handleUpdateWiki = async (spikeId: string) => {
+    try {
+      await updateSpikeWiki(spikeId)
+    } catch (err: unknown) {
+      pushError('Failed to queue wiki update', String(err))
+    }
+  }
+
+  const handleUpdatePending = async () => {
+    try {
+      await triggerPendingWikiUpdates()
+    } catch (err: unknown) {
+      pushError('Failed to queue pending wiki updates', String(err))
+    }
+  }
+
+  const handleShowSummary = useCallback(async (streamName: string) => {
+    try {
+      const resp = await fetchStreamSummary(streamName)
+      setRightPanel({ mode: 'stream-summary', streamName, content: resp.content, generatedAt: resp.generated_at })
+    } catch (err: unknown) {
+      pushError('Failed to load stream summary', String(err))
+    }
+  }, [pushError])
+
+  const handleTriggerSummary = useCallback(async (streamName: string) => {
+    setSummarizingStreams(prev => new Set(prev).add(streamName))
+    try {
+      await triggerStreamSummary(streamName)
+    } catch (err: unknown) {
+      setSummarizingStreams(prev => { const next = new Set(prev); next.delete(streamName); return next })
+      pushError('Failed to start stream summarization', String(err))
+    }
+  }, [pushError])
+
+  const handleShowDailySummary = useCallback(async (date: string) => {
+    try {
+      const resp = await fetchDailySummary(date)
+      setRightPanel({ mode: 'daily-summary', date, content: resp.content, generatedAt: resp.generated_at })
+    } catch (err: unknown) {
+      pushError('Failed to load daily summary', String(err))
+    }
+  }, [pushError])
+
+  const handleTriggerDailySummary = useCallback(async (date: string) => {
+    setSummarizingDailies(prev => new Set(prev).add(date))
+    try {
+      await triggerDailySummary(date)
+    } catch (err: unknown) {
+      setSummarizingDailies(prev => { const next = new Set(prev); next.delete(date); return next })
+      pushError('Failed to start daily summarization', String(err))
+    }
+  }, [pushError])
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    setIsResizing(true)
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return
+      const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
+      setRightPanelWidth(Math.min(50, Math.max(20, pct)))
+    }
+
+    const onMouseUp = (ev: MouseEvent) => {
+      isDragging.current = false
+      setIsResizing(false)
+      const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
+      const clamped = Math.min(50, Math.max(20, pct))
+      setRightPanelWidth(clamped)
+      localStorage.setItem('braindump-right-panel-width', String(clamped))
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
+
   return (
     <div className="app">
+      <HeaderBar />
       <div className="app-panels">
+      <NavBar
+        activeView={activeNav}
+        pendingCount={pendingCount}
+        onAddSpike={() => setRightPanel({ mode: 'editor', spike: null })}
+        onViewChange={setActiveNav}
+        onUpdatePending={handleUpdatePending}
+      />
+
       {/* Left sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <img src={logo} alt="braindump" className="logo" />
-        </div>
-        <div className="sidebar-actions">
-          <button
-            className="btn-add-spike"
-            onClick={() => setRightPanel({ mode: 'editor', spike: null })}
-            aria-label="Add spike"
-          >
-            <span className="btn-add-spike-icon">+</span>
-            Add spike
-          </button>
-        </div>
         <SearchBar value={search} onChange={setSearch} />
         <SpikeList
           spikes={filteredSpikes}
           selectedId={selectedSpikeId}
           onSelect={handleSpikeSelect}
+          onUpdateWiki={handleUpdateWiki}
         />
-        <StatusBar syncing={isSyncing} healthCheck={isHealthCheck} totalCostUsd={totalCostUsd} totalTokens={totalTokens} syncCount={syncCount} />
+        <StatusBar syncing={isSyncing} healthCheck={isHealthCheck} isSummarizing={summarizingStreams.size > 0 || summarizingDailies.size > 0} totalCostUsd={totalCostUsd} totalTokens={totalTokens} syncCount={syncCount} />
       </aside>
 
       {/* Main area */}
       <main className="main">
-        {/* View toggle tab bar */}
-        <div className="main-tab-bar">
-          <div className="main-tabs">
-            <button
-              className={`main-tab${mainView === 'hierarchy' ? ' active' : ''}`}
-              onClick={handleSwitchToHierarchy}
-            >
-              Browse
-            </button>
-            <button
-              className={`main-tab${mainView === 'graph' ? ' active' : ''}`}
-              onClick={() => setMainView('graph')}
-            >
-              Graph
-            </button>
-          </div>
-        </div>
-
-        {/* Graph — hidden but NOT unmounted to preserve the Cytoscape instance */}
-        <div className={`main-view-slot${mainView === 'graph' ? '' : ' hidden'}`}>
-          <GraphView
-            nodes={graphData.nodes}
-            edges={graphData.edges}
-            selectedSpikeId={selectedSpikeId}
-            selectedSectionHeading={selectedSectionHeading}
-            zoomLevel={zoomLevel}
-            onZoomChange={(level: 0 | 1 | 2) => setZoomLevel(level)}
-            onNodeClick={handleNodeClick}
-            spikes={spikes}
-          />
-        </div>
-
-        {/* Hierarchy browse — only rendered when active */}
-        {mainView === 'hierarchy' && (
+        {activeNav === 'streams' ? (
           <div className="main-view-slot">
-            <HierarchyView
-              spikes={filteredSpikes}
-              groupMode={hierarchyGroupMode}
-              onGroupModeChange={setHierarchyGroupMode}
-              communityData={hierarchyData}
-              communityLoading={hierarchyLoading}
+            <StreamsView
+              spikes={spikes}
+              streams={streams}
+              summarizingStreams={summarizingStreams}
               selectedId={selectedSpikeId}
               onSelect={handleSpikeSelect}
+              onShowSummary={handleShowSummary}
+              onTriggerSummary={handleTriggerSummary}
             />
           </div>
-        )}
+        ) : activeNav === 'dailies' ? (
+          <div className="main-view-slot">
+            <DailiesView
+              spikes={spikes}
+              dailies={dailies}
+              summarizingDailies={summarizingDailies}
+              selectedId={selectedSpikeId}
+              onSelect={handleSpikeSelect}
+              onShowSummary={handleShowDailySummary}
+              onTriggerSummary={handleTriggerDailySummary}
+            />
+          </div>
+        ) : (
+          <>
+            {/* View toggle tab bar */}
+            <div className="main-tab-bar">
+              <div className="main-tabs">
+                <button
+                  className={`main-tab${mainView === 'hierarchy' ? ' active' : ''}`}
+                  onClick={handleSwitchToHierarchy}
+                >
+                  Browse
+                </button>
+                <button
+                  className={`main-tab${mainView === 'graph' ? ' active' : ''}`}
+                  onClick={() => setMainView('graph')}
+                >
+                  Graph
+                </button>
+              </div>
+            </div>
 
-        <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
+            {/* Graph — hidden but NOT unmounted to preserve the Cytoscape instance */}
+            <div className={`main-view-slot${mainView === 'graph' ? '' : ' hidden'}`}>
+              <GraphView
+                nodes={graphData.nodes}
+                edges={graphData.edges}
+                selectedSpikeId={selectedSpikeId}
+                selectedSectionHeading={selectedSectionHeading}
+                zoomLevel={zoomLevel}
+                onZoomChange={(level: 0 | 1 | 2) => setZoomLevel(level)}
+                onNodeClick={handleNodeClick}
+                spikes={spikes}
+              />
+            </div>
+
+            {/* Hierarchy browse — only rendered when active */}
+            {mainView === 'hierarchy' && (
+              <div className="main-view-slot">
+                <HierarchyView
+                  spikes={filteredSpikes}
+                  allSpikes={spikes}
+                  groupMode={hierarchyGroupMode}
+                  onGroupModeChange={setHierarchyGroupMode}
+                  communityData={hierarchyData}
+                  communityLoading={hierarchyLoading}
+                  selectedId={selectedSpikeId}
+                  onSelect={handleSpikeSelect}
+                />
+              </div>
+            )}
+
+            <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
+          </>
+        )}
       </main>
 
       {/* Right panel — editor or detail */}
       {rightPanel && (
-        <aside className={`right-panel${isExpanded ? ' expanded' : ''}`}>
+        <div className={`right-panel-handle${isResizing ? ' resizing' : ''}`} onMouseDown={handleResizeMouseDown} />
+      )}
+      {rightPanel && (
+        <aside className="right-panel" style={{ width: `${rightPanelWidth}vw` }}>
           {rightPanel.mode === 'editor' ? (
             <SpikeEditor
               key={rightPanel.spike?.id ?? 'new'}
               spike={rightPanel.spike}
               allTags={allTags}
-              expanded={isExpanded}
+              allStreams={allStreams}
               onSave={handleSave}
               onCancel={() => {
                 if (rightPanel.spike) {
@@ -333,17 +518,28 @@ function AppInner() {
                 }
               }}
               onClose={() => setRightPanel(null)}
-              onExpandToggle={() => setIsExpanded(p => !p)}
+            />
+          ) : rightPanel.mode === 'stream-summary' ? (
+            <StreamSummaryPanel
+              streamName={rightPanel.streamName}
+              content={rightPanel.content}
+              generatedAt={rightPanel.generatedAt}
+              onClose={() => setRightPanel(null)}
+            />
+          ) : rightPanel.mode === 'daily-summary' ? (
+            <StreamSummaryPanel
+              streamName={rightPanel.date}
+              content={rightPanel.content}
+              generatedAt={rightPanel.generatedAt}
+              onClose={() => setRightPanel(null)}
             />
           ) : (
             <SpikeDetail
               spike={rightPanel.spike}
               highlightSection={rightPanel.highlightSection}
-              expanded={isExpanded}
               onEdit={() => setRightPanel({ mode: 'editor', spike: rightPanel.spike })}
               onDelete={() => handleDelete(rightPanel.spike.id)}
               onClose={() => setRightPanel(null)}
-              onExpandToggle={() => setIsExpanded(p => !p)}
             />
           )}
         </aside>

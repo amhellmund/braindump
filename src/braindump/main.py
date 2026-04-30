@@ -19,12 +19,13 @@ import logging
 import os
 import shutil
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
 
-from braindump import dirs, wiki
+from braindump import dirs, migrations, wiki
 from braindump.llm import LLM_CONFIG_FILENAME, ClaudeBackend
 from braindump.storage import ALLOWED_IMAGE_TYPES
 from braindump.types import LLMConfig
@@ -103,6 +104,21 @@ def run() -> None:
     )
     run_p.add_argument("--port", type=_valid_port, default=8000, help="TCP port to listen on (default: 8000).")
     run_p.set_defaults(func=_cmd_run)
+
+    # ------------------------------------------------------------------
+    # update
+    # ------------------------------------------------------------------
+    update_p = sub.add_parser(
+        "update",
+        help="Migrate a workspace to the current schema version.",
+        description="Apply any pending schema migrations to the given workspace.",
+    )
+    update_p.add_argument(
+        "workspace",
+        type=Path,
+        help="Workspace directory to migrate.",
+    )
+    update_p.set_defaults(func=_cmd_update)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -225,8 +241,11 @@ def _cmd_run(args: argparse.Namespace) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
     os.environ["BRAINDUMP_WORKSPACE"] = str(workspace)
 
-    for warning in wiki.check_versions(workspace):
-        _logger.warning("Warning: %s", warning)
+    messages = migrations.check_migration_needed(workspace)
+    if messages:
+        for msg in messages:
+            _logger.error("Error: %s", msg)
+        sys.exit(1)
 
     llm_config_path = dirs.config_dir(workspace) / LLM_CONFIG_FILENAME
     if llm_config_path.exists():
@@ -257,3 +276,14 @@ def _cmd_run(args: argparse.Namespace) -> None:
         port=args.port,
         reload=dev,
     )
+
+
+def _cmd_update(args: argparse.Namespace) -> None:
+    """Apply pending schema migrations to the workspace."""
+    workspace: Path = args.workspace.resolve()
+    applied = migrations.run_migrations(workspace)
+    if applied:
+        for desc in applied:
+            _logger.info("Applied: %s", desc)
+    else:
+        _logger.info("Workspace is already up-to-date.")

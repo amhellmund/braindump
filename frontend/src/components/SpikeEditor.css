@@ -76,6 +76,27 @@
   background: var(--accent-hover);
 }
 
+.btn-save-update {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-save-update:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn-save-update:not(:disabled):hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .btn-close {
   background: none;
   border: none;
@@ -141,6 +162,62 @@
   flex-shrink: 0;
 }
 
+/* ── Stream row ── */
+.editor-stream-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.editor-stream-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.editor-stream-field {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-input);
+  transition: border-color 0.15s;
+}
+
+.editor-stream-field:focus-within {
+  border-color: var(--accent);
+}
+
+.editor-stream-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 1px 2px;
+}
+
+.editor-stream-input::placeholder {
+  color: var(--text-muted);
+}
+
+.editor-stream-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.editor-stream-clear:hover {
+  color: var(--text-primary);
+}
+
 /* ── Divider ── */
 .editor-divider {
   height: 1px;
@@ -150,18 +227,26 @@
 }
 
 /* ── Body editor ── */
-.editor-textarea {
+.editor-cm-host {
   flex: 1;
-  resize: none;
-  border: none;
-  outline: none;
-  padding: 16px;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
-  font-size: 13px;
-  line-height: 1.7;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
-  color: var(--text-primary);
-  tab-size: 2;
+}
+
+.editor-cm-host .cm-editor {
+  flex: 1;
+  height: 100%;
+  background: var(--surface);
+}
+
+.editor-cm-host .cm-scroller {
+  overflow: auto;
+}
+
+.editor-cm-hidden {
+  display: none;
 }
 
 .preview {

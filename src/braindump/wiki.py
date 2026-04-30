@@ -36,6 +36,7 @@ from typing import NamedTuple
 from pydantic import TypeAdapter
 
 from braindump import txlog
+from braindump.dailies import init_dailies
 from braindump.dirs import (
     connections_path,
     hierarchy_path,
@@ -47,6 +48,8 @@ from braindump.dirs import (
     wiki_dir,
 )
 from braindump.llm import ChatBackend
+from braindump.migrations import CURRENT_VERSIONS
+from braindump.streams import init_streams
 from braindump.types import (
     LogDetail,
     LogEntry,
@@ -55,7 +58,6 @@ from braindump.types import (
     SpikeResponse,
     WikiRemoveLogDetail,
     WikiUpdateLogDetail,
-    WorkspaceVersions,
 )
 
 
@@ -71,9 +73,6 @@ class WikiUsage(NamedTuple):
 ########################################################################################################################
 
 _TEMPORAL_WINDOW_DAYS = 7
-
-# Current schema versions — bump when the format of the corresponding file changes.
-CURRENT_VERSIONS = WorkspaceVersions(wiki_schema=1, meta=1)
 
 # UUID pattern used when parsing hierarchy.md and connections.md
 _UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
@@ -156,6 +155,8 @@ def init_wiki(workspace: Path) -> None:
     _write_if_missing(hierarchy_path(workspace), "# Spike Hierarchy\n\n")
     _write_if_missing(meta_json_path(workspace), "{}\n")
     log_dir(workspace).mkdir(exist_ok=True)
+    init_streams(workspace)
+    init_dailies(workspace)
 
 
 def init_versions(workspace: Path) -> None:
@@ -169,43 +170,6 @@ def init_versions(workspace: Path) -> None:
     path = versions_path(workspace)
     if not path.exists():
         path.write_text(CURRENT_VERSIONS.model_dump_json(indent=2), encoding="utf-8")
-
-
-def check_versions(workspace: Path) -> list[str]:
-    """Compare ``versions.json`` against the current expected schema versions.
-
-    Returns a (possibly empty) list of human-readable warning strings, one per
-    version mismatch detected.  The caller is responsible for surfacing these to
-    the user.
-
-    Args:
-        workspace: Root workspace directory.
-
-    Returns:
-        List of warning strings; empty when everything is up-to-date.
-    """
-    path = versions_path(workspace)
-    if not path.exists():
-        return ["versions.json not found — run `braindump init <workspace>` to create it."]
-    try:
-        stored = WorkspaceVersions.model_validate_json(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as exc:
-        return [f"Could not read versions.json: {exc}"]
-
-    warnings: list[str] = []
-    if stored.wiki_schema != CURRENT_VERSIONS.wiki_schema:
-        warnings.append(
-            f"wiki/SCHEMA.md is at version {stored.wiki_schema}, "
-            f"expected {CURRENT_VERSIONS.wiki_schema}. "
-            "Re-run `braindump init <workspace>` to update it."
-        )
-    if stored.meta != CURRENT_VERSIONS.meta:
-        warnings.append(
-            f"wiki/meta.json is at version {stored.meta}, "
-            f"expected {CURRENT_VERSIONS.meta}. "
-            "Delete wiki/meta.json and restart to regenerate it."
-        )
-    return warnings
 
 
 ########################################################################################################################
@@ -225,7 +189,7 @@ def read_meta(workspace: Path) -> dict[str, SpikeMeta]:
     return _read_meta_json(meta_json_path(workspace))
 
 
-def update_meta_json(workspace: Path, spike: SpikeResponse) -> None:
+def update_meta_json(workspace: Path, spike: SpikeResponse, wiki_pending: bool = False) -> None:
     """Add or replace a spike's metadata entry in ``braindump/meta.json``.
 
     This is a pure filesystem operation — no LLM involved.
@@ -233,6 +197,7 @@ def update_meta_json(workspace: Path, spike: SpikeResponse) -> None:
     Args:
         workspace: Root workspace directory.
         spike: The spike whose metadata should be synced.
+        wiki_pending: When True, marks this spike as needing a wiki update.
     """
     path = meta_json_path(workspace)
     meta = _read_meta_json(path)
@@ -243,6 +208,7 @@ def update_meta_json(workspace: Path, spike: SpikeResponse) -> None:
         modified_at=spike.modifiedAt,
         languages=spike.languages,
         image_count=spike.image_count,
+        wiki_pending=wiki_pending,
     )
     _write_meta_json(path, meta)
 
@@ -275,6 +241,19 @@ def list_all_meta(workspace: Path) -> list[SpikeMetaEntry]:
     return entries
 
 
+def list_pending_spike_ids(workspace: Path) -> list[str]:
+    """Return spike IDs whose wiki is out of date (saved without a wiki update).
+
+    Args:
+        workspace: Root workspace directory.
+
+    Returns:
+        List of spike IDs with ``wiki_pending=True`` in ``meta.json``.
+    """
+    meta = _read_meta_json(meta_json_path(workspace))
+    return [sid for sid, data in meta.items() if data.wiki_pending]
+
+
 ########################################################################################################################
 # LLM-Driven Wiki Updates                                                                                              #
 ########################################################################################################################
@@ -294,7 +273,7 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
     Returns:
         :class:`WikiUsage` with the accumulated cost and token count across all LLM calls.
     """
-    update_meta_json(workspace, spike)
+    update_meta_json(workspace, spike, wiki_pending=False)
 
     schema = schema_path(workspace).read_text(encoding="utf-8")
     total_cost = 0.0
@@ -370,65 +349,38 @@ async def update_wiki_for_spike(workspace: Path, spike: SpikeResponse, backend: 
     return WikiUsage(cost_usd=total_cost, total_tokens=total_tokens)
 
 
-async def remove_spike_from_wiki(workspace: Path, spike_id: str, backend: ChatBackend) -> WikiUsage:
-    """Remove a spike from the wiki layer.
-
-    Immediately removes the entry from ``braindump/meta.json``, then calls the LLM to
-    clean up ``braindump/index.md``, ``braindump/connections.md``, and ``braindump/hierarchy.md``.
+async def remove_spike_from_wiki(workspace: Path, spike_id: str) -> WikiUsage:
+    """Remove a spike from the wiki layer using pure-Python text operations.
 
     Args:
         workspace: Root workspace directory.
         spike_id: UUID of the spike to remove.
-        backend: Active LLM backend.
 
     Returns:
-        :class:`WikiUsage` with the accumulated cost and token count across all LLM calls.
+        :class:`WikiUsage` with zero cost (no LLM calls).
     """
     remove_from_meta_json(workspace, spike_id)
-
-    schema = schema_path(workspace).read_text(encoding="utf-8")
-    removal_prompt = (
-        f"Remove all references to spike ID `{spike_id}` from the file below. "
-        "Output only the complete updated file — no preamble, no explanation.\n\n"
-    )
-    total_cost = 0.0
-    total_tokens = 0
-    total_prompt_chars = 0
-
     txid = txlog.begin_transaction(workspace, txlog.TxOp.REMOVE_SPIKE, spike_id)
 
-    for wiki_file_path, step in (
-        (index_path(workspace), txlog.TxEvent.STEP_INDEX),
-        (connections_path(workspace), txlog.TxEvent.STEP_CONNECTIONS),
-        (hierarchy_path(workspace), txlog.TxEvent.STEP_HIERARCHY),
-    ):
-        current = wiki_file_path.read_text(encoding="utf-8")
-        prompt = removal_prompt + current
-        total_prompt_chars += len(prompt)
-        result = await asyncio.to_thread(
-            backend.complete_with_usage,
-            schema,
-            [],
-            prompt,
-        )
-        wiki_file_path.write_text(result.text.strip() + "\n", encoding="utf-8")
-        total_cost += result.cost_usd
-        total_tokens += result.total_tokens
-        txlog.record_step(workspace, txid, step)
+    index_text = index_path(workspace).read_text(encoding="utf-8")
+    index_path(workspace).write_text(_remove_from_index(index_text, spike_id), encoding="utf-8")
+    txlog.record_step(workspace, txid, txlog.TxEvent.STEP_INDEX)
+
+    connections_text = connections_path(workspace).read_text(encoding="utf-8")
+    connections_path(workspace).write_text(_remove_from_connections(connections_text, spike_id), encoding="utf-8")
+    txlog.record_step(workspace, txid, txlog.TxEvent.STEP_CONNECTIONS)
+
+    hierarchy_text = hierarchy_path(workspace).read_text(encoding="utf-8")
+    hierarchy_path(workspace).write_text(_remove_from_hierarchy(hierarchy_text, spike_id), encoding="utf-8")
+    txlog.record_step(workspace, txid, txlog.TxEvent.STEP_HIERARCHY)
 
     txlog.commit_transaction(workspace, txid)
     append_log(
         workspace,
         f"Removed spike {spike_id} from wiki",
-        WikiRemoveLogDetail(
-            spike_id=spike_id,
-            cost_usd=total_cost,
-            total_tokens=total_tokens,
-            system_prompt_chars=len(schema),
-            prompt_chars=total_prompt_chars,
-        ),
+        WikiRemoveLogDetail(spike_id=spike_id, cost_usd=0.0, total_tokens=0),
     )
-    return WikiUsage(cost_usd=total_cost, total_tokens=total_tokens)
+    return WikiUsage(cost_usd=0.0, total_tokens=0)
 
 
 ########################################################################################################################
@@ -484,6 +436,85 @@ def append_log(workspace: Path, summary: str, detail: LogDetail | None = None) -
     ldir.mkdir(exist_ok=True)
     entry = LogEntry(ts=ts, summary=summary, detail=detail)
     (ldir / filename).write_text(entry.model_dump_json(), encoding="utf-8")
+
+
+def _remove_from_index(text: str, spike_id: str) -> str:
+    """Remove the ``## {spike_id}`` section from index.md text."""
+    heading = f"## {spike_id}"
+    lines = text.splitlines()
+    inside = False
+    kept: list[str] = []
+    for line in lines:
+        if line.strip() == heading:
+            inside = True
+            continue
+        if inside:
+            if line.startswith("## "):
+                inside = False
+                kept.append(line)
+        else:
+            kept.append(line)
+    cleaned: list[str] = []
+    prev_blank = False
+    for line in kept:
+        is_blank = not line.strip()
+        if is_blank and prev_blank:
+            continue
+        cleaned.append(line)
+        prev_blank = is_blank
+    return "\n".join(cleaned).rstrip() + "\n"
+
+
+def _remove_from_connections(text: str, spike_id: str) -> str:
+    """Remove all connection lines referencing *spike_id* from connections.md text."""
+    kept = [
+        line
+        for line in text.splitlines()
+        if not (m := CONNECTION_RE.match(line.strip())) or (m.group(1) != spike_id and m.group(2) != spike_id)
+    ]
+    return "\n".join(kept).rstrip() + "\n"
+
+
+def _remove_from_hierarchy(text: str, spike_id: str) -> str:
+    """Remove *spike_id* from its community in hierarchy.md; drop the community if it becomes empty."""
+    spike_bullet = re.compile(rf"^\s*-\s*{re.escape(spike_id)}(?:\s|$)")
+    lines = text.splitlines()
+    pre_header: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    current_heading: str | None = None
+    current_body: list[str] = []
+    for line in lines:
+        if line.strip().startswith("## Community:"):
+            if current_heading is not None:
+                sections.append((current_heading, current_body))
+            else:
+                pre_header = current_body[:]
+            current_heading = line
+            current_body = []
+        else:
+            current_body.append(line)
+    if current_heading is not None:
+        sections.append((current_heading, current_body))
+    else:
+        pre_header = current_body[:]
+    result_sections: list[tuple[str, list[str]]] = []
+    for heading, body in sections:
+        new_body = [line for line in body if not spike_bullet.match(line)]
+        if any(line.strip().startswith("-") for line in new_body if line.strip()):
+            result_sections.append((heading, new_body))
+    output: list[str] = list(pre_header)
+    for heading, body in result_sections:
+        output.append(heading)
+        output.extend(body)
+    cleaned: list[str] = []
+    prev_blank = False
+    for line in output:
+        is_blank = not line.strip()
+        if is_blank and prev_blank:
+            continue
+        cleaned.append(line)
+        prev_blank = is_blank
+    return "\n".join(cleaned).rstrip() + "\n"
 
 
 def _extract_index_section(text: str, spike_id: str) -> str:

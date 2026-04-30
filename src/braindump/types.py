@@ -36,6 +36,8 @@ class WorkspaceVersions(BaseModel):
 
     wiki_schema: int = 1
     meta: int = 1
+    streams: int = 1
+    dailies: int = 0
 
 
 class SpikeMeta(BaseModel):
@@ -47,6 +49,7 @@ class SpikeMeta(BaseModel):
     modified_at: str = ""
     languages: list[str] = []
     image_count: int = 0
+    wiki_pending: bool = False
 
 
 class SpikeMetaEntry(SpikeMeta):
@@ -62,10 +65,42 @@ class Section(BaseModel):
     content: str
 
 
+class StreamMeta(BaseModel):
+    """Metadata for a single named stream stored in ``streams/streams.json``."""
+
+    created_at: str
+    modified_at: str
+    summary_at: str | None = None
+
+
+class StreamsData(BaseModel):
+    """Full contents of ``streams/streams.json`` — maps stream name to its metadata."""
+
+    streams: dict[str, StreamMeta] = {}
+
+
+class StreamsAssignments(BaseModel):
+    """Full contents of ``streams/assignments.json`` — maps spike_id to stream name."""
+
+    assignments: dict[str, str] = {}
+
+
+class InfoResponse(BaseModel):
+    """Response for the /info endpoint."""
+
+    version: str
+    wiki_schema: int
+    meta: int
+    streams: int
+    dailies: int
+
+
 class SpikePayload(BaseModel):
     """Request body for creating or updating a spike."""
 
     raw: str = Field(max_length=200_000)
+    stream: str | None = None
+    update_wiki: bool = True
 
 
 class SpikeResponse(BaseModel):
@@ -80,6 +115,8 @@ class SpikeResponse(BaseModel):
     sections: list[Section]
     languages: list[str] = []
     image_count: int = 0
+    stream: str | None = None
+    wikiPending: bool = False
 
 
 class ChatTurn(BaseModel):
@@ -214,8 +251,33 @@ class HealthRepairLogDetail(BaseModel):
     errors: list[str]
 
 
+class StreamSummaryLogDetail(BaseModel):
+    """Details captured when the LLM generates a stream summary."""
+
+    kind: Literal["stream_summary"] = "stream_summary"
+    stream_name: str
+    spike_count: int
+    cost_usd: float
+    total_tokens: int
+
+
+class DailySummaryLogDetail(BaseModel):
+    """Details captured when the LLM generates a daily summary."""
+
+    kind: Literal["daily_summary"] = "daily_summary"
+    date: str
+    spike_count: int
+    cost_usd: float
+    total_tokens: int
+
+
 LogDetail = Annotated[
-    WikiUpdateLogDetail | WikiRemoveLogDetail | HealthCheckLogDetail | HealthRepairLogDetail,
+    WikiUpdateLogDetail
+    | WikiRemoveLogDetail
+    | HealthCheckLogDetail
+    | HealthRepairLogDetail
+    | StreamSummaryLogDetail
+    | DailySummaryLogDetail,
     Field(discriminator="kind"),
 ]
 
@@ -241,3 +303,51 @@ class StatusResponse(BaseModel):
     syncing: bool
     total_cost_usd: float
     total_tokens: int
+
+
+class StreamInfo(BaseModel):
+    """Stream metadata returned by ``GET /api/v1/streams``."""
+
+    name: str
+    created_at: str
+    modified_at: str
+    summary_at: str | None
+    spike_count: int
+    summary_pending: bool
+
+
+class StreamSummaryResponse(BaseModel):
+    """Stream summary returned by the stream summary endpoints."""
+
+    stream_name: str
+    content: str
+    generated_at: str
+
+
+class DailyMeta(BaseModel):
+    """Metadata for a single day stored in ``dailies/dailies.json``."""
+
+    summary_at: str | None = None
+
+
+class DailiesData(BaseModel):
+    """Full contents of ``dailies/dailies.json`` — maps YYYY-MM-DD date to its metadata."""
+
+    dailies: dict[str, DailyMeta] = {}
+
+
+class DailyInfo(BaseModel):
+    """Daily metadata returned by ``GET /api/v1/dailies``."""
+
+    date: str
+    spike_count: int
+    summary_at: str | None
+    summary_pending: bool
+
+
+class DailySummaryResponse(BaseModel):
+    """Daily summary returned by the daily summary endpoints."""
+
+    date: str
+    content: str
+    generated_at: str

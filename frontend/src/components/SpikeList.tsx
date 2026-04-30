@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faRotate } from '@fortawesome/free-solid-svg-icons'
 import { Spike } from '../types'
 import { formatDatetime } from '../utils'
 import './SpikeList.css'
@@ -6,9 +9,12 @@ interface Props {
   spikes: Spike[]
   selectedId: string | null
   onSelect: (spike: Spike) => void
+  onUpdateWiki?: (id: string) => void
 }
 
-export default function SpikeList({ spikes, selectedId, onSelect }: Props) {
+export default function SpikeList({ spikes, selectedId, onSelect, onUpdateWiki }: Props) {
+  const [triggered, setTriggered] = useState<Set<string>>(new Set())
+
   return (
     <div className="spike-list">
       <div className="spike-list-header">Recent spikes</div>
@@ -21,6 +27,21 @@ export default function SpikeList({ spikes, selectedId, onSelect }: Props) {
           className={`spike-list-item ${spike.id === selectedId ? 'selected' : ''}`}
           onClick={() => onSelect(spike)}
         >
+          {spike.wikiPending && (
+            <button
+              className="spike-list-pending-btn"
+              title="Update wiki"
+              aria-label="Update wiki for this spike"
+              disabled={triggered.has(spike.id)}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation()
+                setTriggered(prev => new Set(prev).add(spike.id))
+                onUpdateWiki?.(spike.id)
+              }}
+            >
+              <FontAwesomeIcon icon={faRotate} />
+            </button>
+          )}
           <div className="spike-list-title">
             <span>{spike.title}</span>
           </div>

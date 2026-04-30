@@ -36,8 +36,8 @@ def _stub_wiki_llm_updates(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _noop_update(workspace: object, spike: object, backend: object) -> None:
         pass
 
-    async def _noop_remove(workspace: object, spike_id: object, backend: object) -> None:
-        pass
+    async def _noop_remove(workspace: object, spike_id: object) -> wiki.WikiUsage:
+        return wiki.WikiUsage(cost_usd=0.0, total_tokens=0)
 
     monkeypatch.setattr(wiki, "update_wiki_for_spike", _noop_update)
     monkeypatch.setattr(wiki, "remove_spike_from_wiki", _noop_remove)

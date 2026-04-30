@@ -1,5 +1,6 @@
 /* ── Design tokens ── */
 :root {
+  --header-height:   44px;
   --toolbar-height:  44px;
   --bottom-bar-height: 50px;
   --bg:              #0f1117;
@@ -70,76 +71,37 @@ body {
 }
 
 .right-panel {
-  width: 20vw;
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.right-panel.expanded {
-  position: fixed;
-  right: 0;
+.right-panel-handle {
+  width: 1px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--border);
+  position: relative;
+  transition: background 0.15s, width 0.15s;
+}
+
+.right-panel-handle::after {
+  content: '';
+  position: absolute;
   top: 0;
   bottom: 0;
-  width: 60vw;
-  z-index: 50;
-  border-left: 1px solid var(--border);
+  left: -4px;
+  right: -4px;
 }
 
-/* ── Sidebar header ── */
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  height: var(--toolbar-height);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.logo {
-  height: 24px;
-  width: auto;
-  display: block;
-}
-
-
-/* ── Sidebar add-spike action ── */
-.sidebar-actions {
-  padding: 10px 12px 2px;
-  flex-shrink: 0;
-}
-
-.btn-add-spike {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
+.right-panel-handle:hover,
+.right-panel-handle:active,
+.right-panel-handle.resizing {
+  width: 3px;
   background: var(--accent);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
-  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.25);
 }
 
-.btn-add-spike:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-}
-
-.btn-add-spike-icon {
-  font-size: 18px;
-  line-height: 1;
-  font-weight: 400;
-}
 
 /* ── Shared zoom/toggle button (used in GraphView and HierarchyView) ── */
 .zoom-btn {

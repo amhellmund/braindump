@@ -73,8 +73,8 @@
 .status-log-overlay {
   position: fixed;
   left: 10px;
-  width: 50vw;
-  max-width: calc(100vw - 20px);
+  width: 45vw;
+  height: 35vh;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -82,7 +82,6 @@
   z-index: 200;
   display: flex;
   flex-direction: column;
-  max-height: 500px;
   overflow: hidden;
 }
 
@@ -235,6 +234,36 @@
   font-size: 10px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* ── Log overlay tabs ── */
+.status-log-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.status-log-tab {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+
+.status-log-tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.status-log-tab.active {
+  background: var(--surface-active);
+  border-color: var(--border);
+  color: var(--text-primary);
 }
 
 .status-log-loading,

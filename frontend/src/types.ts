@@ -11,6 +11,24 @@ export interface Spike {
   modifiedAt: string
   raw: string        // full markdown source (frontmatter + body)
   sections: Section[]
+  stream: string | null
+  wikiPending: boolean
+}
+
+export interface Stream {
+  name: string
+  created_at: string
+  modified_at: string
+  summary_at: string | null
+  spike_count: number
+  summary_pending: boolean
+}
+
+export interface Daily {
+  date: string
+  spike_count: number
+  summary_at: string | null
+  summary_pending: boolean
 }
 
 export interface GraphNode {

@@ -1,6 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faExpand, faCompress } from '@fortawesome/free-solid-svg-icons'
 import { Spike, Section } from '../types'
 import { formatDatetime } from '../utils'
 import MarkdownPreview from './MarkdownPreview'
@@ -9,14 +7,12 @@ import './SpikeDetail.css'
 interface Props {
   spike: Spike
   highlightSection: string | null   // heading of section to highlight (from graph click)
-  expanded: boolean
   onEdit: () => void
   onDelete: () => void
   onClose: () => void
-  onExpandToggle: () => void
 }
 
-export default function SpikeDetail({ spike, highlightSection, expanded, onEdit, onDelete, onClose, onExpandToggle }: Props) {
+export default function SpikeDetail({ spike, highlightSection, onEdit, onDelete, onClose }: Props) {
   const handleDelete = () => {
     if (window.confirm(`Delete "${spike.title}"? This cannot be undone.`)) {
       onDelete()
@@ -27,14 +23,6 @@ export default function SpikeDetail({ spike, highlightSection, expanded, onEdit,
     <div className="spike-detail">
       <div className="detail-toolbar">
         <div className="detail-toolbar-left">
-          <button
-            className="btn-expand"
-            onClick={onExpandToggle}
-            title={expanded ? 'Shrink' : 'Expand'}
-            aria-label={expanded ? 'Shrink' : 'Expand'}
-          >
-            <FontAwesomeIcon icon={expanded ? faCompress : faExpand} />
-          </button>
           <span className="detail-title">Spike Viewer</span>
         </div>
         <div className="detail-actions">

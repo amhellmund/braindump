@@ -9,12 +9,15 @@ import {
   WikiRemoveLogDetail,
   HealthCheckLogDetail,
   HealthRepairLogDetail,
+  StreamSummaryLogDetail,
+  DailySummaryLogDetail,
 } from '../api'
 import './StatusBar.css'
 
 interface StatusBarProps {
   syncing: boolean
   healthCheck: boolean
+  isSummarizing: boolean
   totalCostUsd: number
   totalTokens: number
   syncCount: number
@@ -128,27 +131,57 @@ function HealthRepairDetail({ d }: { d: HealthRepairLogDetail }) {
   )
 }
 
+function StreamSummaryDetail({ d }: { d: StreamSummaryLogDetail }) {
+  return (
+    <div className="status-log-detail-meta">
+      {formatTokens(d.total_tokens)} tokens · {formatCost(d.cost_usd)} · {d.spike_count} spike(s)
+    </div>
+  )
+}
+
+function DailySummaryDetail({ d }: { d: DailySummaryLogDetail }) {
+  return (
+    <div className="status-log-detail-meta">
+      {formatTokens(d.total_tokens)} tokens · {formatCost(d.cost_usd)} · {d.spike_count} spike(s)
+    </div>
+  )
+}
+
 function LogEntryDetail({ detail }: { detail: LogDetail }) {
   switch (detail.kind) {
-    case 'wiki_update':  return <WikiUpdateDetail d={detail} />
-    case 'wiki_remove':  return <WikiRemoveDetail d={detail} />
-    case 'health_check': return <HealthCheckDetail d={detail} />
-    case 'health_repair': return <HealthRepairDetail d={detail} />
+    case 'wiki_update':    return <WikiUpdateDetail d={detail} />
+    case 'wiki_remove':    return <WikiRemoveDetail d={detail} />
+    case 'health_check':   return <HealthCheckDetail d={detail} />
+    case 'health_repair':  return <HealthRepairDetail d={detail} />
+    case 'stream_summary': return <StreamSummaryDetail d={detail} />
+    case 'daily_summary':  return <DailySummaryDetail d={detail} />
   }
 }
 
-export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTokens, syncCount }: StatusBarProps) {
+type LogTab = 'spike' | 'health'
+
+function classifyEntry(entry: LogEntry): LogTab {
+  if (entry.detail) {
+    return entry.detail.kind === 'health_check' || entry.detail.kind === 'health_repair'
+      ? 'health'
+      : 'spike'
+  }
+  return entry.summary.toLowerCase().startsWith('health') ? 'health' : 'spike'
+}
+
+export default function StatusBar({ syncing, healthCheck, isSummarizing, totalCostUsd, totalTokens, syncCount }: StatusBarProps) {
   const [showLog, setShowLog] = useState(false)
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [logLoading, setLogLoading] = useState(false)
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+  const [activeTab, setActiveTab] = useState<LogTab>('spike')
   const barRef = useRef<HTMLDivElement>(null)
   const [overlayBottom, setOverlayBottom] = useState(0)
 
   useEffect(() => {
     if (!showLog) return
     setLogLoading(true)
-    fetchLog(50)
+    fetchLog(100)
       .then(data => setLogEntries(data.entries))
       .catch(() => setLogEntries([{ ts: '', summary: 'Failed to load log.' }]))
       .finally(() => setLogLoading(false))
@@ -162,8 +195,9 @@ export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTok
     }
     setShowLog(true)
     setExpandedIndex(null)
+    setActiveTab('spike')
     setLogLoading(true)
-    fetchLog(50)
+    fetchLog(100)
       .then(data => setLogEntries(data.entries))
       .catch(() => setLogEntries([{ ts: '', summary: 'Failed to load log.' }]))
       .finally(() => setLogLoading(false))
@@ -171,24 +205,50 @@ export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTok
 
   const closeLog = useCallback(() => setShowLog(false), [])
 
+  const switchTab = useCallback((tab: LogTab) => {
+    setActiveTab(tab)
+    setExpandedIndex(null)
+  }, [])
+
   const toggleEntry = useCallback((i: number) => {
     setExpandedIndex(prev => prev === i ? null : i)
   }, [])
+
+  const visibleEntries = logEntries.filter(e => classifyEntry(e) === activeTab)
 
   return (
     <div className="status-bar" ref={barRef}>
       {showLog && (
         <div className="status-log-overlay" style={{ bottom: overlayBottom }}>
           <div className="status-log-header">
-            <span className="status-log-title">Activity log</span>
+            <div className="status-log-tabs" role="tablist">
+              <button
+                className={`status-log-tab${activeTab === 'spike' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'spike'}
+                onClick={() => switchTab('spike')}
+              >
+                Spike Updates
+              </button>
+              <button
+                className={`status-log-tab${activeTab === 'health' ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'health'}
+                onClick={() => switchTab('health')}
+              >
+                Health Checks
+              </button>
+            </div>
             <button className="status-log-close" onClick={closeLog} aria-label="Close log">✕</button>
           </div>
           <div className="status-log-body">
             {logLoading && <span className="status-log-loading">Loading…</span>}
-            {!logLoading && logEntries.length === 0 && (
-              <span className="status-log-empty">No activity yet.</span>
+            {!logLoading && visibleEntries.length === 0 && (
+              <span className="status-log-empty">
+                {activeTab === 'spike' ? 'No spike updates yet.' : 'No health checks yet.'}
+              </span>
             )}
-            {!logLoading && logEntries.map((entry, i) => {
+            {!logLoading && visibleEntries.map((entry, i) => {
               const hasDetail = Boolean(entry.detail)
               const expanded = expandedIndex === i
               return (
@@ -218,17 +278,17 @@ export default function StatusBar({ syncing, healthCheck, totalCostUsd, totalTok
       )}
 
       <button
-        className={`status-pill${syncing ? ' syncing' : ''}`}
+        className={`status-pill${(syncing || isSummarizing) ? ' syncing' : ''}`}
         onClick={showLog ? closeLog : openLog}
-        aria-label={syncing ? (healthCheck ? 'Health check running — click to view log' : 'LLM updating — click to view log') : 'Synced — click to view log'}
+        aria-label={syncing ? (healthCheck ? 'Health check running — click to view log' : 'LLM updating — click to view log') : isSummarizing ? 'Summarizing stream — click to view log' : 'Synced — click to view log'}
       >
         <FontAwesomeIcon
-          icon={syncing ? faArrowsRotate : faCircleCheck}
+          icon={(syncing || isSummarizing) ? faArrowsRotate : faCircleCheck}
           className="status-icon"
-          spin={syncing}
+          spin={syncing || isSummarizing}
           aria-hidden={true}
         />
-        {syncing ? (healthCheck ? 'Health check' : 'Updating') : 'Synced'}
+        {syncing ? (healthCheck ? 'Health check' : 'Updating') : isSummarizing ? 'Summarizing' : 'Synced'}
       </button>
 
       <div className="status-usage">
