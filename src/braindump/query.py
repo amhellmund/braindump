@@ -26,7 +26,7 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
-from braindump import dirs, wiki
+from braindump import dirs, storage, wiki
 from braindump.llm import ChatBackend
 from braindump.types import ChatTurn, QueryResponse, QuerySource
 
@@ -47,12 +47,13 @@ _SNIPPET_LEN = 250  # characters shown in source cards
 
 _SYSTEM_PROMPT = (
     "You are braindump, an AI assistant for a personal knowledge base. "
-    "You answer questions using ONLY the compiled knowledge index provided in the user message. "
-    "The index contains LLM-authored summaries of all notes ('spikes') in the knowledge base, "
-    "each identified by a number [N]. "
+    "You answer questions using the compiled knowledge index provided in the user message. "
+    "Each note ('spike') is identified by a number [N] with a file path. "
+    "For overview questions, the summary index is sufficient. "
+    "For detailed questions, use the Read tool on the spike's file path to fetch its full content before answering. "
     "Cite every piece of information inline using [N] notation matching the source number. "
-    "If the index summaries are insufficient to answer confidently, say so explicitly — "
-    "do not invent facts or reference information not present in the index."
+    "If the available information is insufficient to answer confidently, say so explicitly — "
+    "do not invent facts."
 )
 
 ########################################################################################################################
@@ -100,7 +101,9 @@ async def run_query(
     ref_lines: list[str] = []
     for i, entry in enumerate(meta, start=1):
         tags_str = ", ".join(entry.tags) or "—"
-        ref_lines.append(f'[{i}] {entry.id} — "{entry.title}" (tags: {tags_str})')
+        path = storage.get_spike_path(workspace, entry.id)
+        path_str = str(path) if path else "(file not found)"
+        ref_lines.append(f'[{i}] {entry.id} — "{entry.title}" (tags: {tags_str}) — file: {path_str}')
         spike_ref.append({"index": i, **entry.model_dump()})
 
     reference_block = "\n".join(ref_lines)
@@ -110,7 +113,10 @@ async def run_query(
         f"Question:\n<user_question>{query_text}</user_question>"
     )
 
-    completion = await asyncio.to_thread(backend.complete_with_usage, _SYSTEM_PROMPT, history or [], user_message)
+    spikes_dir = dirs.spikes_dir(workspace)
+    completion = await asyncio.to_thread(
+        backend.complete_with_usage, _SYSTEM_PROMPT, history or [], user_message, spikes_dir
+    )
 
     summaries = _parse_index_summaries(index_content)
     citations = _extract_citations(completion.text, spike_ref, summaries)

@@ -31,7 +31,8 @@ from braindump.wiki import _extract_index_section, append_log, list_all_meta
 
 _SYSTEM_PROMPT = """\
 You are a knowledge synthesizer for braindump, a personal knowledge base of Markdown notes called "spikes".
-Produce a short, scannable Markdown recap of what was explored on a given date — a quick reminder, not an exhaustive report.
+Produce a short, scannable Markdown recap of what was explored on a given date — a quick reminder, not an exhaustive
+report.
 
 Rules:
 1. Output ONLY the Markdown document — no preamble, no wrapping code fences.

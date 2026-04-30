@@ -108,6 +108,19 @@ def delete_spike_file(workspace: Path, spike_id: str) -> None:
         path.unlink()
 
 
+def get_spike_path(workspace: Path, spike_id: str) -> Path | None:
+    """Return the filesystem path for a spike file, or None if it does not exist.
+
+    Args:
+        workspace: Root workspace directory.
+        spike_id: UUID string used as the filename prefix.
+
+    Returns:
+        Absolute path to the spike file, or ``None`` when not found.
+    """
+    return _find_spike_file(workspace, spike_id)
+
+
 def parse_spike(raw: str, spike_id: str) -> SpikeResponse:
     """Parse raw markdown into a SpikeResponse.
 
