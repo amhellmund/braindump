@@ -31,17 +31,16 @@ from braindump.wiki import _extract_index_section, append_log
 
 _SYSTEM_PROMPT = """\
 You are a knowledge synthesizer for braindump, a personal knowledge base of Markdown notes called "spikes".
-Produce a comprehensive, well-structured Markdown document synthesizing all spikes in a named stream.
+Treat all spikes as fragments of a single topic and write a cohesive documentation page for that topic —
+not a summary of individual spikes. The reader should come away understanding the subject, not the spike structure.
 
 Rules:
 1. Output ONLY the Markdown document — no preamble, no wrapping code fences.
-2. Use exactly these four top-level sections in order:
-   ## Overview
-   ## Key Themes
-   ## Spike Highlights
-   ## Synthesis
-3. In "Spike Highlights", include a ### subsection for each spike (2-3 sentences each).
-4. In "Synthesis", draw cross-cutting insights, patterns, or contradictions.
+2. Derive the section structure from the content itself: choose headings that reflect the topic's natural
+   sub-areas, concepts, or phases — do NOT use generic headings like "Overview" or "Spike Highlights".
+3. Weave information from multiple spikes together under each heading. Never devote a section to a single spike.
+4. Include the level of detail needed to understand the topic: key concepts, important specifics, trade-offs,
+   and open questions — but omit peripheral details that do not add to understanding.
 5. Every claim must be traceable to the provided spike content.
 """
 
@@ -115,9 +114,9 @@ async def generate_stream_summary(workspace: Path, stream_name: str, backend: Ch
 def _build_prompt(stream_name: str, spike_blocks: list[str]) -> str:
     spikes_text = "\n\n---\n\n".join(spike_blocks)
     return (
-        f'Synthesize the following {len(spike_blocks)} spike(s) from the stream "{stream_name}" '
-        f"into a comprehensive Markdown document.\n\n"
+        f'Write a documentation page for the stream "{stream_name}" based on the following '
+        f"{len(spike_blocks)} spike(s). Treat the spikes as raw material, not as items to summarize individually.\n\n"
         f"=== SPIKES ===\n\n{spikes_text}\n\n"
         f"=== END SPIKES ===\n\n"
-        f"Output the complete synthesis document now."
+        f"Output the documentation page now."
     )

@@ -31,18 +31,16 @@ from braindump.wiki import _extract_index_section, append_log, list_all_meta
 
 _SYSTEM_PROMPT = """\
 You are a knowledge synthesizer for braindump, a personal knowledge base of Markdown notes called "spikes".
-Produce a comprehensive, well-structured Markdown document synthesizing all spikes created on a given date.
+Produce a short, scannable Markdown recap of what was explored on a given date — a quick reminder, not an exhaustive report.
 
 Rules:
 1. Output ONLY the Markdown document — no preamble, no wrapping code fences.
-2. Use exactly these four top-level sections in order:
-   ## Overview
-   ## Key Themes
-   ## Spike Highlights
-   ## Synthesis
-3. In "Spike Highlights", include a ### subsection for each spike (2-3 sentences each).
-4. In "Synthesis", draw cross-cutting insights, patterns, or contradictions across the day's spikes.
-5. Every claim must be traceable to the provided spike content.
+2. Use exactly these two top-level sections in order:
+   ## What was done
+   ## Key takeaways
+3. In "What was done", one bullet per spike: spike title followed by a single sentence describing what it covers.
+4. In "Key takeaways", at most 3 bullets capturing the most important insights or patterns across all spikes.
+5. Total length must not exceed 200 words.
 """
 
 
@@ -123,9 +121,9 @@ def _spike_date(created_at: str) -> str:
 def _build_prompt(date: str, spike_blocks: list[str]) -> str:
     spikes_text = "\n\n---\n\n".join(spike_blocks)
     return (
-        f"Synthesize the following {len(spike_blocks)} spike(s) created on {date} "
-        f"into a comprehensive Markdown document.\n\n"
+        f"Summarize the following {len(spike_blocks)} spike(s) created on {date} "
+        f"into a brief daily recap.\n\n"
         f"=== SPIKES ===\n\n{spikes_text}\n\n"
         f"=== END SPIKES ===\n\n"
-        f"Output the complete synthesis document now."
+        f"Output the short recap now."
     )
