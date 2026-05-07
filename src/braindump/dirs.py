@@ -30,6 +30,7 @@ _WIKI_DIR = "wiki"
 _CHATS_DIR = "chats"
 _STREAMS_DIR = "streams"
 _TXLOG_FILE = "txlog.jsonl"
+_USERS_DIR = ".users"
 
 
 def config_dir(workspace: Path) -> Path:
@@ -183,3 +184,16 @@ def daily_summaries_dir(workspace: Path) -> Path:
 def daily_summary_path(workspace: Path, date: str) -> Path:
     """Return the path to ``<workspace>/dailies/summaries/{date}.md``."""
     return daily_summaries_dir(workspace) / f"{date}.md"
+
+
+def users_dir(workspace: Path) -> Path:
+    """Return the users directory (``<workspace>/.users/``).
+
+    This directory is gitignored and must never be committed.
+    """
+    return workspace / _USERS_DIR
+
+
+def users_path(workspace: Path) -> Path:
+    """Return the path to ``<workspace>/.users/users.json``."""
+    return users_dir(workspace) / "users.json"

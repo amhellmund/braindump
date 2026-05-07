@@ -12,7 +12,10 @@
       "Read(//home/andi/workspace/sandbox/braindump/wiki/logs/**)",
       "Bash(python3 -m json.tool)",
       "Read(//home/andi/workspace/sandbox/braindump/wiki/**)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import claude_agent_sdk; import inspect; print\\(inspect.getsource\\(claude_agent_sdk.ClaudeAgentOptions\\)\\)\")",
+      "Read(//tmp/**)",
+      "Bash(python3)"
     ]
   }
 }

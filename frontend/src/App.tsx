@@ -8,6 +8,7 @@ import {
   updateSpike,
   updateSpikeWiki,
   triggerPendingWikiUpdates,
+  triggerWikiRepair,
   deleteSpike,
   fetchStreams,
   fetchStreamSummary,
@@ -15,6 +16,8 @@ import {
   fetchDailies,
   fetchDailySummary,
   triggerDailySummary,
+  fetchAuthMode,
+  ConflictError,
   GraphData,
 } from './api'
 import SearchBar from './components/SearchBar'
@@ -30,8 +33,10 @@ import StreamsView from './components/StreamsView'
 import StreamSummaryPanel from './components/StreamSummaryPanel'
 import DailiesView from './components/DailiesView'
 import HeaderBar from './components/HeaderBar'
+import LoginPage from './components/LoginPage'
 import { ErrorToastProvider } from './components/ErrorToast'
 import { useErrorToast } from './components/ErrorToastContext'
+import { AuthProvider, useAuth } from './auth'
 import './App.css'
 
 type RightPanel = { mode: 'editor'; spike: Spike | null }
@@ -42,13 +47,43 @@ type RightPanel = { mode: 'editor'; spike: Spike | null }
 
 export default function App() {
   return (
-    <ErrorToastProvider>
-      <AppInner />
-    </ErrorToastProvider>
+    <AuthProvider>
+      <ErrorToastProvider>
+        <AuthGate />
+      </ErrorToastProvider>
+    </AuthProvider>
   )
 }
 
-function AppInner() {
+function AuthGate() {
+  const { username, sessionChecked, clearAuth } = useAuth()
+  const [multiUser, setMultiUser] = useState<boolean | null>(null)
+
+  // Listen for 401 events dispatched by api.ts.
+  useEffect(() => {
+    const handler = () => { clearAuth().catch(() => {}) }
+    window.addEventListener('braindump-unauthorized', handler)
+    return () => window.removeEventListener('braindump-unauthorized', handler)
+  }, [clearAuth])
+
+  // Detect single-user vs multi-user mode on mount.
+  useEffect(() => {
+    fetchAuthMode().then(mode => setMultiUser(mode.multi_user)).catch(() => setMultiUser(false))
+  }, [])
+
+  // Wait for both the auth-mode probe and the whoami probe to complete.
+  if (multiUser === null || !sessionChecked) return null
+
+  // Single-user mode: skip login entirely.
+  if (!multiUser) return <AppInner multiUser={false} />
+
+  // Multi-user: require an active session.
+  if (!username) return <LoginPage onLogin={() => {}} />
+
+  return <AppInner multiUser={true} />
+}
+
+function AppInner({ multiUser }: { multiUser: boolean }) {
   const { pushError } = useErrorToast()
   const [spikes, setSpikes] = useState<Spike[]>([])
   const [search, setSearch] = useState('')
@@ -130,7 +165,8 @@ function AppInner() {
     const connect = () => {
       if (destroyed) return
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      ws = new WebSocket(`${proto}//${window.location.host}/api/v1/ws`)
+      const wsUrl = `${proto}//${window.location.host}/api/v1/ws`
+      ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
         backoffMs = 1000  // reset backoff after a successful connection
@@ -290,14 +326,20 @@ function AppInner() {
     }
   }
 
-  // Save a spike — receives body (no frontmatter), tags, stream, and whether to update the wiki
-  const handleSave = async (body: string, tags: string[], stream: string | null, updateWiki: boolean) => {
+  // Save a spike — receives body (no frontmatter), tags, stream, updateWiki, and optimistic lock value
+  const handleSave = async (
+    body: string,
+    tags: string[],
+    stream: string | null,
+    updateWiki: boolean,
+    expectedModifiedAt: string | null,
+  ) => {
     const editingSpike = rightPanel?.mode === 'editor' ? rightPanel.spike : null
     const raw = `---\ntags: [${tags.join(', ')}]\n---\n\n${body}`
 
     try {
       if (editingSpike) {
-        const updated = await updateSpike(editingSpike.id, raw, stream, updateWiki)
+        const updated = await updateSpike(editingSpike.id, raw, stream, updateWiki, expectedModifiedAt)
         setSpikes(prev => prev.map(s => s.id === editingSpike.id ? updated : s))
         setRightPanel({ mode: 'detail', spike: updated, highlightSection: null })
       } else {
@@ -308,6 +350,8 @@ function AppInner() {
       }
       fetchStreams().then(setStreams).catch(() => {})
     } catch (err: unknown) {
+      // ConflictError is surfaced by SpikeEditor itself; re-throw for the editor to handle.
+      if (err instanceof ConflictError) throw err
       pushError('Failed to save spike', String(err))
     }
   }
@@ -325,6 +369,14 @@ function AppInner() {
       await triggerPendingWikiUpdates()
     } catch (err: unknown) {
       pushError('Failed to queue pending wiki updates', String(err))
+    }
+  }
+
+  const handleRepair = async () => {
+    try {
+      await triggerWikiRepair()
+    } catch (err: unknown) {
+      pushError('Failed to trigger wiki repair', String(err))
     }
   }
 
@@ -394,7 +446,7 @@ function AppInner() {
 
   return (
     <div className="app">
-      <HeaderBar />
+      <HeaderBar multiUser={multiUser} />
       <div className="app-panels">
       <NavBar
         activeView={activeNav}
@@ -402,6 +454,7 @@ function AppInner() {
         onAddSpike={() => setRightPanel({ mode: 'editor', spike: null })}
         onViewChange={setActiveNav}
         onUpdatePending={handleUpdatePending}
+        onRepair={handleRepair}
       />
 
       {/* Left sidebar */}
@@ -491,10 +544,9 @@ function AppInner() {
                 />
               </div>
             )}
-
-            <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
           </>
         )}
+        <QueryBar onSourceClick={(spikeId, section) => handleNodeClick({ spikeId, sectionHeading: section })} />
       </main>
 
       {/* Right panel — editor or detail */}

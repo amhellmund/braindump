@@ -76,6 +76,21 @@
   text-decoration: underline;
 }
 
+.md-blockquote {
+  display: block;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c9d1d9;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+}
+
 .md-image {
   display: block;
   max-width: 100%;

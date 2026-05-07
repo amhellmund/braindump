@@ -29,6 +29,7 @@ from braindump import dirs, migrations, wiki
 from braindump.llm import LLM_CONFIG_FILENAME, ClaudeBackend
 from braindump.storage import ALLOWED_IMAGE_TYPES
 from braindump.types import LLMConfig
+from braindump.users import UserRegistry
 
 _logger = logging.getLogger(__name__)
 
@@ -119,6 +120,41 @@ def run() -> None:
         help="Workspace directory to migrate.",
     )
     update_p.set_defaults(func=_cmd_update)
+
+    # ------------------------------------------------------------------
+    # user
+    # ------------------------------------------------------------------
+    user_p = sub.add_parser(
+        "user",
+        help="Manage users for multi-user mode.",
+        description="Manage the user registry stored in <workspace>/.users/users.json.",
+    )
+    user_sub = user_p.add_subparsers(dest="user_command", metavar="<subcommand>")
+    user_sub.required = True
+
+    user_add_p = user_sub.add_parser(
+        "add",
+        help="Add a new user and print their access token.",
+        description=(
+            "Create a new user in the workspace's user registry and print the generated token. "
+            "The token is shown exactly once and cannot be retrieved later."
+        ),
+    )
+    user_add_p.add_argument("username", type=str, help="Username for the new user.")
+    user_add_p.add_argument("workspace", type=Path, help="Workspace directory.")
+    user_add_p.set_defaults(func=_cmd_user_add)
+
+    user_update_token_p = user_sub.add_parser(
+        "update-token",
+        help="Rotate the access token for an existing user.",
+        description=(
+            "Generate a new access token for the given user and invalidate the old one. "
+            "The new token is shown exactly once and cannot be retrieved later."
+        ),
+    )
+    user_update_token_p.add_argument("username", type=str, help="Username whose token should be rotated.")
+    user_update_token_p.add_argument("workspace", type=Path, help="Workspace directory.")
+    user_update_token_p.set_defaults(func=_cmd_user_update_token)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -287,3 +323,69 @@ def _cmd_update(args: argparse.Namespace) -> None:
             _logger.info("Applied: %s", desc)
     else:
         _logger.info("Workspace is already up-to-date.")
+
+
+def _cmd_user_add(args: argparse.Namespace) -> None:
+    """Add a user to the workspace registry and print the generated token."""
+    workspace: Path = args.workspace.resolve()
+    username: str = args.username
+
+    users_file = dirs.users_path(workspace)
+    registry = UserRegistry(users_file)
+    if users_file.exists():
+        registry.load()
+
+    try:
+        token = registry.add_user(username)
+    except ValueError as exc:
+        _logger.error("Error: %s", exc)
+        sys.exit(1)
+
+    registry.save()
+    _ensure_gitignore(workspace)
+
+    _logger.info("User '%s' added.", username)
+    _logger.info("Access token (shown once — store it securely):\n\n  %s\n", token)
+    _logger.info("Restart the server to activate multi-user mode if this is the first user.")
+
+
+def _cmd_user_update_token(args: argparse.Namespace) -> None:
+    """Rotate the access token for an existing user."""
+    workspace: Path = args.workspace.resolve()
+    username: str = args.username
+
+    users_file = dirs.users_path(workspace)
+    if not users_file.exists():
+        _logger.error("Error: no user registry found at %s. Run `braindump user add` first.", users_file)
+        sys.exit(1)
+
+    registry = UserRegistry(users_file)
+    registry.load()
+
+    try:
+        token = registry.update_token(username)
+    except ValueError as exc:
+        _logger.error("Error: %s", exc)
+        sys.exit(1)
+
+    registry.save()
+
+    _logger.info("Token updated for '%s'.", username)
+    _logger.info("New access token (shown once — store it securely):\n\n  %s\n", token)
+    _logger.info("The old token is now invalid. Restart the server to apply the change.")
+
+
+def _ensure_gitignore(workspace: Path) -> None:
+    """Add ``.users/`` to ``<workspace>/.gitignore`` if not already present."""
+    gitignore = workspace / ".gitignore"
+    entry = ".users/"
+    if gitignore.exists():
+        content = gitignore.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        if entry in lines or entry.rstrip("/") in lines:
+            return
+        updated = content.rstrip("\n") + f"\n{entry}\n"
+        gitignore.write_text(updated, encoding="utf-8")
+    else:
+        gitignore.write_text(f"{entry}\n", encoding="utf-8")
+    _logger.info("Added '%s' to %s", entry, gitignore)

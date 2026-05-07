@@ -79,6 +79,23 @@ export default function MarkdownPreview({ raw, stripFrontmatter = true }: Props)
       continue
     }
 
+    // Blockquote — collect consecutive `> ` lines
+    if (line.startsWith('> ')) {
+      const items: string[] = []
+      while (i < lines.length && lines[i].startsWith('> ')) {
+        items.push(lines[i].slice(2))
+        i++
+      }
+      elements.push(
+        <blockquote key={key++} className="md-blockquote">
+          {items.map((item, idx) => (
+            <span key={idx}>{renderInline(item)}{idx < items.length - 1 ? '\n' : ''}</span>
+          ))}
+        </blockquote>
+      )
+      continue
+    }
+
     // Unordered list — collect consecutive `- ` or `* ` lines
     if (/^[*-] /.test(line)) {
       const items: string[] = []

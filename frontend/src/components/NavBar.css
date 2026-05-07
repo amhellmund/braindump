@@ -100,3 +100,7 @@
   min-width: 12px;
   text-align: center;
 }
+
+.nav-btn-health {
+  color: var(--text-muted);
+}

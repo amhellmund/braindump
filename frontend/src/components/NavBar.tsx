@@ -1,5 +1,5 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faPlus, faBolt, faCalendarDay, faLayerGroup, faRotate } from '@fortawesome/free-solid-svg-icons'
+import { faPlus, faBolt, faCalendarDay, faLayerGroup, faRotate, faHeartPulse } from '@fortawesome/free-solid-svg-icons'
 import { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import './NavBar.css'
 
@@ -11,6 +11,7 @@ interface Props {
   onAddSpike: () => void
   onViewChange: (view: NavView) => void
   onUpdatePending: () => void
+  onRepair: () => void
 }
 
 interface NavItem {
@@ -26,7 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'dailies', icon: faCalendarDay, caption: 'Dailies',  disabled: false },
 ]
 
-export default function NavBar({ activeView, pendingCount, onAddSpike, onViewChange, onUpdatePending }: Props) {
+export default function NavBar({ activeView, pendingCount, onAddSpike, onViewChange, onUpdatePending, onRepair }: Props) {
   return (
     <nav className="nav-bar">
       <button
@@ -64,6 +65,16 @@ export default function NavBar({ activeView, pendingCount, onAddSpike, onViewCha
           {pendingCount > 0 && <span className="nav-btn-pending-badge">{pendingCount}</span>}
         </div>
         <span className="nav-btn-caption">Update</span>
+      </button>
+
+      <button
+        className="nav-btn nav-btn-health"
+        onClick={onRepair}
+        aria-label="Run health check and repair"
+        title="Run health check and repair"
+      >
+        <FontAwesomeIcon icon={faHeartPulse} className="nav-btn-icon" />
+        <span className="nav-btn-caption">Health</span>
       </button>
     </nav>
   )

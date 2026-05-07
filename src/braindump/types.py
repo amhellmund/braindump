@@ -101,6 +101,7 @@ class SpikePayload(BaseModel):
     raw: str = Field(max_length=200_000)
     stream: str | None = None
     update_wiki: bool = True
+    expected_modified_at: str | None = None
 
 
 class SpikeResponse(BaseModel):
@@ -351,3 +352,15 @@ class DailySummaryResponse(BaseModel):
     date: str
     content: str
     generated_at: str
+
+
+class LoginRequest(BaseModel):
+    """Request body for ``POST /api/v1/auth/login``."""
+
+    token: str
+
+
+class WhoAmIResponse(BaseModel):
+    """Returned by ``GET /api/v1/auth/whoami`` and ``POST /api/v1/auth/login``."""
+
+    username: str

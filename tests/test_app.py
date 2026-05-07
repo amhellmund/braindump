@@ -268,3 +268,31 @@ def test_query_too_large_rejected(client: TestClient) -> None:
     oversized = "x" * 10_001
     resp = client.post("/api/v1/query", json={"query": oversized})
     assert resp.status_code == 422
+
+
+def test_update_spike_matching_expected_modified_at(client: TestClient) -> None:
+    created = client.post("/api/v1/spikes", json={"raw": _SAMPLE_RAW}).json()
+    spike_id = created["id"]
+    modified_at = created["modifiedAt"]
+    resp = client.put(
+        f"/api/v1/spikes/{spike_id}",
+        json={"raw": _UPDATED_RAW, "expected_modified_at": modified_at},
+    )
+    assert resp.status_code == 200
+
+
+def test_update_spike_stale_expected_modified_at_returns_409(client: TestClient) -> None:
+    created = client.post("/api/v1/spikes", json={"raw": _SAMPLE_RAW}).json()
+    spike_id = created["id"]
+    resp = client.put(
+        f"/api/v1/spikes/{spike_id}",
+        json={"raw": _UPDATED_RAW, "expected_modified_at": "2000-01-01T00:00:00+00:00"},
+    )
+    assert resp.status_code == 409
+
+
+def test_update_spike_no_expected_modified_at_skips_check(client: TestClient) -> None:
+    created = client.post("/api/v1/spikes", json={"raw": _SAMPLE_RAW}).json()
+    spike_id = created["id"]
+    resp = client.put(f"/api/v1/spikes/{spike_id}", json={"raw": _UPDATED_RAW})
+    assert resp.status_code == 200

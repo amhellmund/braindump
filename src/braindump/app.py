@@ -21,6 +21,8 @@ import importlib.metadata
 import json
 import logging
 import os
+import re
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -57,6 +59,7 @@ from braindump.types import (
     ImageUploadResponse,
     InfoResponse,
     LLMConfig,
+    LoginRequest,
     QueryRequest,
     QueryResponse,
     SpikePayload,
@@ -65,8 +68,10 @@ from braindump.types import (
     StreamInfo,
     StreamSummaryResponse,
     UsageData,
+    WhoAmIResponse,
     WorkspaceVersions,
 )
+from braindump.users import UserRegistry
 
 _logger = logging.getLogger(__name__)
 
@@ -79,6 +84,8 @@ SpikeId = Annotated[str, PathParam(pattern=_UUID_RE)]
 ########################################################################################################################
 
 _DEV: bool = os.getenv("BRAINDUMP_DEV", "0") == "1"
+_SESSION_COOKIE_NAME = "bd_session"
+_SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600  # 30 days
 # When installed from a wheel the frontend is bundled inside the package
 # at braindump/frontend/dist/.  In an editable / source checkout it lives at
 # the repo root under frontend/dist/.
@@ -87,6 +94,7 @@ _DEV_DIST: Path = Path(__file__).parent.parent.parent / "frontend" / "dist"
 _DIST: Path = _PKG_DIST if _PKG_DIST.exists() else _DEV_DIST
 
 _DEFAULT_HEALTH_CHECK_INTERVAL_MINUTES = 60
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 @asynccontextmanager
@@ -124,6 +132,17 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     app.state.workspace = workspace
     app.state.braindump_data_dir = braindump_data_dir
     app.state.llm_backend = None  # loaded lazily on first query
+    app.state.login_rate_limiter = _LoginRateLimiter(max_attempts=10, window_seconds=60)
+
+    users_file = dirs.users_path(workspace)
+    if users_file.exists():
+        registry = UserRegistry(users_file)
+        registry.load()
+        app.state.user_registry = registry
+        app.state.multi_user = True
+    else:
+        app.state.user_registry = None
+        app.state.multi_user = False
 
     health_task = asyncio.create_task(_health_check_loop(workspace, braindump_data_dir, interval_minutes))
     try:
@@ -141,6 +160,30 @@ app = FastAPI(
     docs_url="/api/docs" if _DEV else None,
     redoc_url="/api/redoc" if _DEV else None,
 )
+
+
+@app.middleware("http")
+async def _auth_middleware(request: Request, call_next: object) -> object:
+    """Validate session cookies in multi-user mode; pass through in single-user mode."""
+    if not request.app.state.multi_user:
+        return await call_next(request)  # type: ignore[operator]
+
+    # Public auth endpoints: mode detection and login itself need no cookie.
+    if request.url.path in ("/api/v1/auth/mode", "/api/v1/auth/login"):
+        return await call_next(request)  # type: ignore[operator]
+
+    # Static assets and SPA fallback need no auth.
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)  # type: ignore[operator]
+
+    token = request.cookies.get(_SESSION_COOKIE_NAME)
+    user = request.app.state.user_registry.lookup(token or "")
+    if user is None:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+    request.state.user = user
+    return await call_next(request)  # type: ignore[operator]
+
 
 # ---------------------------------------------------------------------------
 # API router — all routes live under /api/v1
@@ -172,6 +215,60 @@ async def get_info(request: Request) -> InfoResponse:
 async def health_status(request: Request) -> JSONResponse:
     """Return service health status and the active workspace path."""
     return JSONResponse({"status": "ok", "dev": _DEV, "workspace": str(request.app.state.workspace)})
+
+
+@api.get("/auth/mode", summary="Auth mode", include_in_schema=False)
+async def auth_mode(request: Request) -> JSONResponse:
+    """Return whether multi-user auth is enabled. No cookie required."""
+    return JSONResponse({"multi_user": request.app.state.multi_user})
+
+
+@api.post("/auth/login", summary="Exchange token for session cookie", include_in_schema=False)
+async def auth_login(request: Request, body: LoginRequest) -> JSONResponse:
+    """Validate a bearer token and issue an HttpOnly session cookie."""
+    if not request.app.state.multi_user:
+        return JSONResponse({"detail": "Not in multi-user mode"}, status_code=400)
+    client_ip = request.client.host if request.client else "unknown"
+    if not request.app.state.login_rate_limiter.is_allowed(client_ip):
+        return JSONResponse({"detail": "Too many attempts"}, status_code=429)
+    user = request.app.state.user_registry.lookup(body.token)
+    if user is None:
+        return JSONResponse({"detail": "Invalid token"}, status_code=401)
+    is_secure = request.url.scheme == "https"
+    response = JSONResponse(WhoAmIResponse(username=user.username).model_dump())
+    response.set_cookie(
+        key=_SESSION_COOKIE_NAME,
+        value=body.token,
+        httponly=True,
+        samesite="strict",
+        secure=is_secure,
+        max_age=_SESSION_COOKIE_MAX_AGE,
+        path="/",
+    )
+    return response
+
+
+@api.post("/auth/logout", summary="Invalidate session cookie", include_in_schema=False)
+async def auth_logout(request: Request) -> JSONResponse:
+    """Clear the session cookie."""
+    is_secure = request.url.scheme == "https"
+    response = JSONResponse({"status": "ok"})
+    response.delete_cookie(
+        key=_SESSION_COOKIE_NAME,
+        path="/",
+        samesite="strict",
+        secure=is_secure,
+        httponly=True,
+    )
+    return response
+
+
+@api.get("/auth/whoami", summary="Return current user from session cookie", include_in_schema=False)
+async def auth_whoami(request: Request) -> JSONResponse:
+    """Return the username for the current session; 401 if not authenticated."""
+    if not request.app.state.multi_user:
+        return JSONResponse({"detail": "Not in multi-user mode"}, status_code=400)
+    return JSONResponse(WhoAmIResponse(username=request.state.user.username).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +347,11 @@ async def update_spike(request: Request, spike_id: SpikeId, body: SpikePayload, 
         raise HTTPException(status_code=404, detail="Spike not found") from exc
 
     existing = storage.parse_spike(existing_raw, spike_id)
+    if body.expected_modified_at is not None and existing.modifiedAt != body.expected_modified_at:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Spike was modified at {existing.modifiedAt}; client expected {body.expected_modified_at}",
+        )
     now = datetime.now(UTC).isoformat()
     raw = storage.enrich_spike(body.raw, existing.createdAt, now)
     storage.write_spike(workspace, spike_id, raw)
@@ -567,6 +669,8 @@ async def get_daily_summary(request: Request, date: str) -> DailySummaryResponse
 
     Returns 404 if no summary has been generated yet for that date.
     """
+    if not _DATE_RE.match(date):
+        raise HTTPException(status_code=400, detail="Invalid date format")
     workspace: Path = request.app.state.workspace
     content = dailies_module.read_daily_summary(workspace, date)
     if content is None:
@@ -586,6 +690,8 @@ async def summarize_daily(request: Request, date: str, bg: BackgroundTasks) -> d
 
     Returns 422 if the day has no spikes.
     """
+    if not _DATE_RE.match(date):
+        raise HTTPException(status_code=400, detail="Invalid date format")
     workspace: Path = request.app.state.workspace
     braindump_data_dir: Path = request.app.state.braindump_data_dir
 
@@ -603,6 +709,15 @@ async def wiki_health_check(request: Request) -> HealthReport:
     """Run a consistency check between spikes on disk and the wiki layer."""
     workspace: Path = request.app.state.workspace
     return health.run_health_check(workspace)
+
+
+@api.post("/wiki/repair", summary="Trigger immediate wiki health check and repair", status_code=202)
+async def trigger_wiki_repair(request: Request, bg: BackgroundTasks) -> dict[str, str]:
+    """Queue an immediate health-check and repair cycle for the wiki layer."""
+    workspace: Path = request.app.state.workspace
+    braindump_data_dir: Path = request.app.state.braindump_data_dir
+    bg.add_task(_health_check_and_notify, workspace, braindump_data_dir)
+    return {"status": "queued"}
 
 
 @api.get("/status", summary="LLM sync state and cumulative usage")
@@ -653,6 +768,12 @@ _WS_PING_INTERVAL = 25.0  # seconds; keeps proxies and browsers from dropping id
 @api.websocket("/ws")
 async def ws_sync_status(ws: WebSocket) -> None:
     """Push sync-status events to connected clients."""
+    if ws.app.state.multi_user:
+        token = ws.cookies.get(_SESSION_COOKIE_NAME)
+        user = ws.app.state.user_registry.lookup(token or "")
+        if user is None:
+            await ws.close(code=1008)
+            return
     await _ws_manager.connect(ws)
     try:
         while True:
@@ -711,6 +832,34 @@ class _ConnectionManager:
 
 _ws_manager = _ConnectionManager()
 
+
+@dataclasses.dataclass
+class _RateLimitEntry:
+    attempts: int
+    window_start: float
+
+
+class _LoginRateLimiter:
+    """In-memory rate limiter: max N login attempts per IP per sliding window."""
+
+    def __init__(self, max_attempts: int, window_seconds: float) -> None:
+        self._max = max_attempts
+        self._window = window_seconds
+        self._entries: dict[str, _RateLimitEntry] = {}
+
+    def is_allowed(self, ip: str) -> bool:
+        """Return True and record the attempt if the IP is within its quota."""
+        now = time.monotonic()
+        entry = self._entries.get(ip)
+        if entry is None or (now - entry.window_start) >= self._window:
+            self._entries[ip] = _RateLimitEntry(attempts=1, window_start=now)
+            return True
+        if entry.attempts < self._max:
+            entry.attempts += 1
+            return True
+        return False
+
+
 # Serialises all wiki file writes so concurrent spike updates don't overwrite
 # each other's LLM output.  Acquired only around the LLM call + file write;
 # the sync_start broadcast and counter increment intentionally happen before it
@@ -765,6 +914,7 @@ async def _wiki_update_and_notify(
             usage = await wiki.update_wiki_for_spike(workspace, spike, backend)
     except Exception as exc:
         error_msg = str(exc)
+        wiki.update_meta_json(workspace, spike, wiki_pending=True)
         wiki.append_log(workspace, f"Sync failed for spike {spike.id} ({spike.title!r}): {error_msg}")
         await _ws_manager.broadcast({"type": "sync_error", "spike_id": spike.id, "error": error_msg})
     _state.active_syncs -= 1

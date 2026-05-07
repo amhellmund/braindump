@@ -49,13 +49,6 @@
   position: relative;
 }
 
-.info-btn-wrapper > .header-btn {
-  opacity: 0.35;
-}
-
-.info-btn-wrapper > .header-btn:hover {
-  opacity: 1;
-}
 
 .info-panel {
   position: absolute;
@@ -89,5 +82,56 @@
 .info-panel-value {
   font-size: 12px;
   font-family: monospace;
+  color: var(--text-primary);
+}
+
+.user-btn-wrapper {
+  position: relative;
+}
+
+.user-panel {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 10px 14px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.user-panel-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.user-panel-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.user-panel-signout {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+  transition: color 0.15s;
+}
+
+.user-panel-signout:hover {
   color: var(--text-primary);
 }

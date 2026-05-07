@@ -6,7 +6,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { Spike } from '../types'
 import { formatDatetime } from '../utils'
-import { uploadImage } from '../api'
+import { uploadImage, ConflictError } from '../api'
 import { useErrorToast } from './ErrorToastContext'
 import MarkdownPreview from './MarkdownPreview'
 import TagsInput from './TagsInput'
@@ -37,7 +37,7 @@ const darkTheme = EditorView.theme({
   '&.cm-focused .cm-selectionBackground': { background: 'var(--surface-active) !important' },
   '.cm-focused': { outline: 'none' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { overflow: 'auto' },
+  '.cm-scroller': { overflowX: 'hidden', overflowY: 'auto' },
   '.cm-cursor': { borderLeftColor: 'var(--text-primary)' },
 }, { dark: true })
 
@@ -56,7 +56,7 @@ interface Props {
   spike: Spike | null
   allTags: string[]
   allStreams: string[]
-  onSave: (body: string, tags: string[], stream: string | null, updateWiki: boolean) => void
+  onSave: (body: string, tags: string[], stream: string | null, updateWiki: boolean, expectedModifiedAt: string | null) => Promise<void>
   onCancel: () => void
   onClose: () => void
 }
@@ -75,6 +75,7 @@ export default function SpikeEditor({ spike, allTags, allStreams, onSave, onCanc
   const [streamOpen, setStreamOpen] = useState(false)
   const [streamHighlight, setStreamHighlight] = useState(0)
   const [preview, setPreview] = useState(false)
+  const [conflict, setConflict] = useState(false)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
   const streamContainerRef = useRef<HTMLDivElement>(null)
@@ -91,7 +92,16 @@ export default function SpikeEditor({ spike, allTags, allStreams, onSave, onCanc
   const originalStream = spike?.stream ?? null
   const isDirty = body !== originalBody || tags.join(',') !== originalTags.join(',') || stream !== originalStream
 
-  const handleSave = (updateWiki: boolean) => { if (isDirty) onSave(body, tags, stream, updateWiki) }
+  const handleSave = (updateWiki: boolean) => {
+    if (!isDirty) return
+    // Pass the modifiedAt the editor loaded as the optimistic lock value.
+    const expectedModifiedAt = spike?.modifiedAt ?? null
+    onSave(body, tags, stream, updateWiki, expectedModifiedAt).catch((err: unknown) => {
+      if (err instanceof ConflictError) {
+        setConflict(true)
+      }
+    })
+  }
 
   useEffect(() => { handleSaveRef.current = () => handleSave(true) })
 
@@ -137,6 +147,7 @@ export default function SpikeEditor({ spike, allTags, allStreams, onSave, onCanc
         extensions: [
           markdown(),
           lineNumbers(),
+          EditorView.lineWrapping,
           darkTheme,
           markdownHighlight,
           keymap.of([{ key: 'Ctrl-Enter', run: () => { handleSaveRef.current(); return true } }]),
@@ -222,6 +233,14 @@ export default function SpikeEditor({ spike, allTags, allStreams, onSave, onCanc
           <button className="btn-close" onClick={onClose}>✕</button>
         </div>
       </div>
+
+      {/* ── Conflict banner ── */}
+      {conflict && (
+        <div className="editor-conflict-banner">
+          This spike was updated by someone else. Reload to see the latest version.
+          <button className="editor-conflict-reload" onClick={onCancel}>Reload</button>
+        </div>
+      )}
 
       {/* ── Metadata header ── */}
       <div className="editor-meta">

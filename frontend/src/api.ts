@@ -7,11 +7,27 @@ import { Daily, GraphEdge, GraphNode, Spike, Stream } from './types'
 
 const BASE = '/api/v1'
 
+export class ConflictError extends Error {
+  constructor(detail: string) {
+    super(detail)
+    this.name = 'ConflictError'
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     ...options,
   })
+  if (resp.status === 401) {
+    window.dispatchEvent(new CustomEvent('braindump-unauthorized'))
+    throw new Error('401 Unauthorized')
+  }
+  if (resp.status === 409) {
+    const text = await resp.text()
+    throw new ConflictError(text)
+  }
   if (!resp.ok) {
     const text = await resp.text()
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`)
@@ -50,10 +66,16 @@ export async function updateSpike(
   raw: string,
   stream: string | null = null,
   updateWiki = true,
+  expectedModifiedAt: string | null = null,
 ): Promise<Spike> {
   return request<Spike>(`/spikes/${id}`, {
     method: 'PUT',
-    body: JSON.stringify({ raw, stream, update_wiki: updateWiki }),
+    body: JSON.stringify({
+      raw,
+      stream,
+      update_wiki: updateWiki,
+      ...(expectedModifiedAt !== null ? { expected_modified_at: expectedModifiedAt } : {}),
+    }),
   })
 }
 
@@ -264,14 +286,59 @@ export async function triggerDailySummary(date: string): Promise<void> {
   return request<void>(`/dailies/${encodeURIComponent(date)}/summarize`, { method: 'POST' })
 }
 
+export async function triggerWikiRepair(): Promise<{ status: string }> {
+  return request<{ status: string }>('/wiki/repair', { method: 'POST' })
+}
+
 export async function uploadImage(file: File): Promise<ImageUploadResponse> {
   const form = new FormData()
   form.append('file', file)
   // No Content-Type header — browser sets multipart/form-data with boundary automatically
-  const resp = await fetch(`${BASE}/images`, { method: 'POST', body: form })
+  const resp = await fetch(`${BASE}/images`, { method: 'POST', body: form, credentials: 'include' })
+  if (resp.status === 401) {
+    window.dispatchEvent(new CustomEvent('braindump-unauthorized'))
+    throw new Error('401 Unauthorized')
+  }
   if (!resp.ok) {
     const text = await resp.text()
     throw new Error(`${resp.status} ${resp.statusText}: ${text}`)
   }
   return resp.json() as Promise<ImageUploadResponse>
+}
+
+export interface AuthMode {
+  multi_user: boolean
+}
+
+export async function fetchAuthMode(): Promise<AuthMode> {
+  const resp = await fetch(`${BASE}/auth/mode`, { credentials: 'include' })
+  if (!resp.ok) return { multi_user: false }
+  return resp.json() as Promise<AuthMode>
+}
+
+export interface WhoAmIResponse {
+  username: string
+}
+
+export async function fetchLogin(token: string): Promise<WhoAmIResponse> {
+  const resp = await fetch(`${BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token }),
+  })
+  if (resp.status === 401) throw new Error('Invalid token')
+  if (resp.status === 429) throw new Error('Too many attempts. Please wait and try again.')
+  if (!resp.ok) throw new Error(`Login failed: ${resp.statusText}`)
+  return resp.json() as Promise<WhoAmIResponse>
+}
+
+export async function fetchLogout(): Promise<void> {
+  await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+}
+
+export async function fetchWhoAmI(): Promise<WhoAmIResponse> {
+  const resp = await fetch(`${BASE}/auth/whoami`, { credentials: 'include' })
+  if (!resp.ok) throw new Error('Not authenticated')
+  return resp.json() as Promise<WhoAmIResponse>
 }

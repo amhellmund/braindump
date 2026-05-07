@@ -23,8 +23,9 @@ The active model is selected from ``llm.json`` inside the workspace
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import claude_agent_sdk
 
@@ -57,25 +58,45 @@ class ChatBackend(ABC):
     """Common interface every LLM backend must implement."""
 
     @abstractmethod
-    async def _complete_async(self, system: str, history: list[ChatTurn], user_message: str) -> LLMCompletion:
+    async def _complete_async(
+        self,
+        system: str,
+        history: list[ChatTurn],
+        user_message: str,
+        allowed_read_dir: Path | None = None,
+    ) -> LLMCompletion:
         """Send a full conversation to the LLM and return the reply with usage info.
 
         Args:
             system: System prompt string.
             history: Prior turns from the current chat session, oldest first.
             user_message: The current user message (already includes RAG context).
+            allowed_read_dir: When set, the LLM may use the Read tool restricted to
+                files inside this directory.  Otherwise all file-system tools are off.
 
         Returns:
             :class:`LLMCompletion` with ``text``, ``cost_usd``, and ``total_tokens``.
         """
 
-    def complete_with_usage(self, system: str, history: list[ChatTurn], user_message: str) -> LLMCompletion:
+    def complete_with_usage(
+        self,
+        system: str,
+        history: list[ChatTurn],
+        user_message: str,
+        allowed_read_dir: Path | None = None,
+    ) -> LLMCompletion:
         """Synchronous wrapper around :meth:`_complete_async` — runs a fresh event loop."""
-        return asyncio.run(self._complete_async(system, history, user_message))
+        return asyncio.run(self._complete_async(system, history, user_message, allowed_read_dir))
 
-    def complete(self, system: str, history: list[ChatTurn], user_message: str) -> str:
+    def complete(
+        self,
+        system: str,
+        history: list[ChatTurn],
+        user_message: str,
+        allowed_read_dir: Path | None = None,
+    ) -> str:
         """Convenience wrapper — returns only the reply text, discarding usage info."""
-        return self.complete_with_usage(system, history, user_message).text
+        return self.complete_with_usage(system, history, user_message, allowed_read_dir).text
 
     def ping(self) -> bool:
         """Test connectivity by issuing a ping and expecting pong in the reply.
@@ -88,6 +109,15 @@ class ChatBackend(ABC):
             return "pong" in reply.lower()
         except Exception:
             return False
+
+
+async def _as_prompt_stream(text: str) -> AsyncIterator[dict[str, Any]]:
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": text},
+        "parent_tool_use_id": None,
+    }
 
 
 class ClaudeBackend(ChatBackend):
@@ -110,6 +140,7 @@ class ClaudeBackend(ChatBackend):
         system: str,
         history: list[ChatTurn],
         user_message: str,
+        allowed_read_dir: Path | None = None,
     ) -> LLMCompletion:
         # Format prior turns into the prompt so the model has session context.
         # The Agent SDK starts fresh on each query() call, so history is
@@ -121,33 +152,58 @@ class ClaudeBackend(ChatBackend):
         parts.append(f"User: {user_message}")
         prompt = "\n\n".join(parts)
 
+        disallowed = [
+            "Bash",
+            "Write",
+            "Edit",
+            "MultiEdit",
+            "Glob",
+            "Grep",
+            "WebFetch",
+            "WebSearch",
+            "TodoWrite",
+            "TodoRead",
+            "NotebookRead",
+            "NotebookEdit",
+        ]
+        if allowed_read_dir is None:
+            disallowed.append("Read")
+
+        resolved_dir = allowed_read_dir.resolve() if allowed_read_dir is not None else None
+
+        async def _can_use_tool(
+            tool_name: str,
+            tool_input: dict[str, Any],
+            context: claude_agent_sdk.ToolPermissionContext,
+        ) -> claude_agent_sdk.PermissionResultAllow | claude_agent_sdk.PermissionResultDeny:
+            if tool_name == "Read" and resolved_dir is not None:
+                file_path = Path(tool_input.get("file_path", "")).resolve()
+                try:
+                    file_path.relative_to(resolved_dir)
+                    return claude_agent_sdk.PermissionResultAllow()
+                except ValueError:
+                    return claude_agent_sdk.PermissionResultDeny(message=f"Read is restricted to {resolved_dir}")
+            return claude_agent_sdk.PermissionResultDeny(message=f"Tool {tool_name} is not permitted")
+
+        use_tool_callback = allowed_read_dir is not None
         options = claude_agent_sdk.ClaudeAgentOptions(
             system_prompt=system,
             model=self._model,
-            max_turns=1,
-            # Disable all agent tools — we only want a text completion.
-            disallowed_tools=[
-                "Bash",
-                "Read",
-                "Write",
-                "Edit",
-                "MultiEdit",
-                "Glob",
-                "Grep",
-                "WebFetch",
-                "WebSearch",
-                "TodoWrite",
-                "TodoRead",
-                "NotebookRead",
-                "NotebookEdit",
-            ],
+            max_turns=10 if use_tool_callback else 1,
+            disallowed_tools=disallowed,
+            can_use_tool=_can_use_tool if use_tool_callback else None,
+        )
+
+        # can_use_tool requires an AsyncIterable prompt (streaming mode)
+        effective_prompt: str | AsyncIterator[dict[str, Any]] = (
+            _as_prompt_stream(prompt) if use_tool_callback else prompt
         )
 
         chunks: list[str] = []
         cost_usd = 0.0
         total_tokens = 0
         try:
-            async for message in claude_agent_sdk.query(prompt=prompt, options=options):
+            async for message in claude_agent_sdk.query(prompt=effective_prompt, options=options):
                 if isinstance(message, claude_agent_sdk.AssistantMessage):
                     for block in message.content:
                         if isinstance(block, claude_agent_sdk.TextBlock):

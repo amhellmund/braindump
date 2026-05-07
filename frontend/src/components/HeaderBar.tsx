@@ -1,16 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import logo from '../assets/logo.png'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faCog, faMoon, faCircleInfo } from '@fortawesome/free-solid-svg-icons'
+import { faCog, faMoon, faCircleInfo, faRightFromBracket, faUser } from '@fortawesome/free-solid-svg-icons'
 import { fetchInfo, InfoData } from '../api'
 import { useErrorToast } from './ErrorToastContext'
+import { useAuth } from '../auth'
 import './HeaderBar.css'
 
-export default function HeaderBar() {
+interface Props {
+  multiUser: boolean
+}
+
+export default function HeaderBar({ multiUser }: Props) {
   const { pushError } = useErrorToast()
+  const { username, clearAuth } = useAuth()
   const [infoOpen, setInfoOpen] = useState(false)
   const [infoData, setInfoData] = useState<InfoData | null>(null)
+  const [userPanelOpen, setUserPanelOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const userWrapperRef = useRef<HTMLDivElement>(null)
 
   const handleInfoClick = useCallback(async () => {
     if (!infoOpen && infoData === null) {
@@ -35,6 +43,17 @@ export default function HeaderBar() {
     document.addEventListener('mousedown', handleMouseDown)
     return () => document.removeEventListener('mousedown', handleMouseDown)
   }, [infoOpen])
+
+  useEffect(() => {
+    if (!userPanelOpen) return
+    function handleMouseDown(e: MouseEvent) {
+      if (userWrapperRef.current && !userWrapperRef.current.contains(e.target as Node)) {
+        setUserPanelOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [userPanelOpen])
 
   return (
     <header className="header-bar">
@@ -80,6 +99,32 @@ export default function HeaderBar() {
         <button className="header-btn" disabled aria-label="Toggle theme" title="Toggle theme">
           <FontAwesomeIcon icon={faMoon} />
         </button>
+        {multiUser && (
+          <div className="user-btn-wrapper" ref={userWrapperRef}>
+            <button
+              className="header-btn"
+              aria-label="User menu"
+              title="User menu"
+              onClick={() => setUserPanelOpen(prev => !prev)}
+            >
+              <FontAwesomeIcon icon={faUser} />
+            </button>
+            {userPanelOpen && (
+              <div className="user-panel">
+                <span className="user-panel-name">{username}</span>
+                <div className="user-panel-divider" />
+                <button
+                  className="user-panel-signout"
+                  aria-label="Sign out"
+                  onClick={() => { clearAuth().catch(() => {}) }}
+                >
+                  <FontAwesomeIcon icon={faRightFromBracket} />
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   )
